@@ -1,0 +1,102 @@
+# StatutPay — Next.js 14 + Supabase (PWA)
+
+## Installation
+1. `npm install`
+2. Copiez `.env.local.example` en `.env.local` et renseignez l’URL et la clé **anon** (Supabase > Project Settings > API).
+3. Supabase > SQL Editor : collez `supabase/schema.sql` puis Run, **puis** `supabase/migration_v2.sql` puis Run (parrainage, favoris, classement, notifications, tableau de bord), **puis** `supabase/migration_v3.sql` puis Run (codes promo, boost, niveaux, avis, défis, rapports, profil), **puis** `supabase/migration_v4.sql` puis Run (campagnes programmées, parrainage 3 niveaux), **puis** `supabase/migration_v5.sql` puis Run (désactivation de l'ancienne vérification SMS), **puis** `supabase/migration_v6.sql` puis Run (médias pour les annonces), **puis** `supabase/migration_v7.sql` puis Run (réparation des colonnes de crédit manquantes), **puis** `supabase/migration_v8.sql` puis Run (réparation des colonnes de campagne manquantes), **puis** `supabase/migration_v9.sql` puis Run (administration), puis `supabase/migration_v11.sql` puis Run (réparation des colonnes du profil), et enfin `supabase/migration_v12.sql` puis Run (historique des transactions).
+4. Supabase > Authentication > Providers > Email : laissez **« Confirm email » activé** (confirmation par e-mail obligatoire).
+5. Supabase > Authentication > URL Configuration :
+   - **Site URL** = l’adresse de votre site (ex : https://statutpay.vercel.app)
+   - **Redirect URLs** : ajoutez l’adresse du site et `http://localhost:3000`
+6. **E-mails en production** : le serveur d’e-mails par défaut de Supabase est limité (quelques e-mails par heure) et sert aux tests.
+   Pour de vrai lancement, branchez votre propre SMTP (Resend, Brevo, SendGrid...) dans Authentication > SMTP Settings.
+   Vous pouvez aussi personnaliser le texte du mail dans Authentication > Email Templates.
+7. `npm run dev` puis ouvrez http://localhost:3000
+
+## Admin
+Inscrivez-vous dans l’app avec votre e-mail et le numéro +22896292039 (confirmez l’e-mail), puis dans le SQL Editor :
+`update public.profiles set role='admin' where phone='+22896292039';`
+Reconnectez-vous : l’onglet Admin apparaît.
+
+## Erreur pendant l’inscription
+- Le message « Ce numéro WhatsApp est déjà utilisé » n’est affiché que si l’erreur Supabase indique explicitement une contrainte unique sur le téléphone. Une erreur générique d’enregistrement du profil ne signifie pas que le numéro est déjà pris.
+- Si l’inscription échoue encore, consultez **Supabase > Logs > Auth** à l’heure de la tentative et vérifiez que les migrations nécessaires ont été appliquées.
+- Si le journal mentionne `column "display_name" of relation "profiles" does not exist`, exécutez `supabase/migration_v11.sql` dans le SQL Editor Supabase, puis réessayez.
+
+## Mise en ligne (Vercel)
+Poussez le dossier sur GitHub, importez le dépôt sur vercel.com, ajoutez les deux variables
+`NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`, puis Deploy.
+Le service worker et l’installation PWA ne fonctionnent qu’en production (`npm run build && npm start`) et en HTTPS.
+
+## Structure
+- `src/app` : layout, page, styles
+- `src/components` : App, AuthView, PublisherView, AdvertiserView, AdminView
+- `src/lib` : client Supabase, types, traductions FR/EN
+- `public` : manifest, service worker, icônes
+- `supabase/schema.sql` : tables, sécurité (RLS), fonctions, stockage
+
+## PWA et bouton « Installer l’app »
+- Le bouton « Installer l’app » (en haut) et une bannière apparaissent automatiquement quand le navigateur permet l’installation (Android/Chrome, Edge, Chrome desktop).
+- Sur iPhone (Safari), l’app affiche la marche à suivre : Partager > Sur l’écran d’accueil.
+- Condition : version de production en HTTPS (`npm run build && npm start`, ou Vercel). En `npm run dev`, le service worker est volontairement désactivé.
+
+## Onglet Annonces
+Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, budget restant, bouton copier le texte, bouton « J’ai publié » qui mène à l’envoi de la preuve).
+
+## Version 2 : nouveautés
+- **Mot de passe oublié** : lien « Mot de passe oublié ? » sur la connexion. L’e-mail ramène sur le site, qui demande le nouveau mot de passe. Aucune config en plus (même Site URL / Redirect URLs que la confirmation).
+- **Notifications push** : à l’activation d’une campagne par l’admin, tous les diffuseurs abonnés (du pays ciblé) reçoivent une notification.
+  1. `npx web-push generate-vapid-keys`
+  2. Dans `.env.local` (et dans Vercel) : `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `SUPABASE_SERVICE_ROLE_KEY`
+  3. `SUPABASE_SERVICE_ROLE_KEY` est **secrète** (Supabase > Settings > API > service_role) : ne jamais la mettre dans le navigateur ni sur GitHub.
+  4. Fonctionne en production HTTPS uniquement. Sur iPhone, l’app doit d’abord être installée sur l’écran d’accueil (iOS 16.4+).
+- **Feed** : filtres Mon pays / Tous / Favoris et par format, cœur pour les favoris, ciblage par pays choisi par l’annonceur (un diffuseur ne peut soumettre que les annonces de son pays ou sans ciblage).
+- **Contenu des annonces** : les diffuseurs peuvent télécharger les médias, copier le texte et la légende, télécharger le texte en `.txt` et partager via le menu natif ou WhatsApp.
+- **Classement** : top 10 des diffuseurs du mois (numéros masqués) dans l’onglet Diffuseur.
+- **Parrainage** : chaque compte a un lien `?ref=CODE`. Quand le filleul obtient sa première validation, le parrain reçoit 100 F (une seule fois par filleul). Montant modifiable dans `migration_v2.sql` (fonction `review_proof`) et `REF_BONUS` dans `src/lib/types.ts`. Ce bonus est payé par la plateforme.
+- **Tableau de bord admin** : utilisateurs, revenus, vues, soldes, retraits, bonus, et deux graphiques sur 14 jours.
+
+## Version 3 : nouveautés
+- **Codes promo et crédit offert** : l'admin crée des codes (onglet Admin > Gestion > Codes promo). L'annonceur les saisit dans son onglet (un seul code par compte). Le crédit réduit le montant à payer ; s'il couvre tout, la campagne est activée automatiquement. Exemple de code de bienvenue : voir la fin de `migration_v3.sql`.
+- **Campagnes boostées** : +1 000 F, 48 h en tête du feed avec l'étiquette « Sponsorisé » (le compte à rebours démarre à l'activation). Tarif : `BOOST_FEE` dans `src/lib/types.ts` **et** `create_campaign` dans le SQL.
+- **Niveaux** : Bronze, Argent (5 validations, 80 % de réussite, +5 %), Or (20 validations, 90 %, +10 %). Le bonus est payé par la plateforme, en plus des 1 F par vue.
+- **Avis** : après une preuve validée, le diffuseur note l'annonceur et l'annonceur note le diffuseur (1 à 5 étoiles + commentaire). La note de l'annonceur s'affiche dans le feed.
+- **Défi du jour** : 3 preuves soumises le même jour ; +50 F versés automatiquement quand 3 preuves du jour sont validées.
+- **Rapport de campagne** : vues livrées, diffuseurs, moyenne, preuves en attente/refusées et graphique 14 jours (bouton « Rapport »).
+- **Aide** : bouton ? dans l'en-tête, avec FAQ (FR/EN, modifiable dans `src/lib/faq.ts`) et lien WhatsApp vers le support.
+- **Profil** : bouton avatar dans l'en-tête, avec nom affiché (utilisé dans le classement), avatar, thème clair/sombre/auto et déconnexion.
+- **Tableau de bord admin** : nouveaux indicateurs (crédits offerts, bonus niveaux et défis, campagnes boostées).
+
+## Version 4 : nouveautés
+- **Campagnes programmées** : dates de début et de fin facultatives. L'annonce n'est visible et soumettable que dans cette période. À l'échéance, la campagne est clôturée et le **budget non dépensé revient à l'annonceur en crédit** (utilisable sur ses prochaines campagnes, pas retirable). La clôture se déclenche à la connexion des utilisateurs (pas besoin de tâche planifiée).
+- **Parrainage à 3 niveaux** : 100 F (amis invités), 30 F (amis de vos amis), 10 F (3e niveau), versés une seule fois à la première validation du filleul. **Ambassadeur** à 10 filleuls actifs : 150 F au niveau 1. Montants dans `review_proof` (migration_v4.sql) et `REF_LEVELS` dans `src/lib/types.ts`. Tous ces bonus sont payés par la plateforme.
+- **Envoi des preuves hors connexion** : sans réseau, la capture est gardée sur le téléphone (IndexedDB) et envoyée automatiquement au retour de la connexion (bannière avec compteur et bouton « Envoyer maintenant »). L'app doit être ouverte pour que l'envoi parte.
+- **Langues** : Français, English et **Português** complets. **Éwé** et **Mina** : les fichiers `src/lib/locales/ee.ts` et `gej.ts` sont prêts mais vides, car ces traductions doivent être faites par des locuteurs natifs. Donnez-leur `src/lib/locales/_template.json` (tous les textes en français) ; dès que 90 % sont traduits, la langue apparaît toute seule dans le sélecteur. Les textes manquants s'affichent en français.
+
+## Version 5 : suppression de la vérification SMS
+- L’envoi de codes par SMS et le réglage administrateur associé ont été retirés. Exécutez `supabase/migration_v5.sql` après la migration v4 pour que la base existante n’exige plus cette vérification pour envoyer des preuves ou demander un retrait.
+
+## Version 6 : images et vidéos dans les annonces
+- L’annonceur peut importer une image ou une vidéo, ou coller un lien HTTPS, avec une légende facultative. Les images sont limitées à 5 Mo et les vidéos à 20 Mo.
+- Les fichiers sont stockés dans le bucket public `campaign-media` de Supabase Storage ; seuls les utilisateurs connectés peuvent importer ou supprimer leurs propres fichiers. Les médias d’annonce sont publics.
+- Exécutez `supabase/migration_v6.sql` après la migration v5 avant de créer des annonces avec média.
+
+## Version 7 : réparation du crédit
+- Si la création d’une campagne affiche `column "credit" does not exist`, exécutez `supabase/migration_v7.sql` dans le SQL Editor de Supabase.
+
+## Version 8 : réparation du schéma des campagnes
+- Si la création d’une campagne affiche une colonne de `campaigns` manquante, exécutez `supabase/migration_v8.sql` dans le SQL Editor de Supabase. Cette migration est idempotente et ajoute les colonnes utilisées par la fonction de création actuelle.
+
+## Version 9 : administration
+- Exécutez `supabase/migration_v9.sql` dans le SQL Editor de Supabase pour ajouter la fonction d’activation des campagnes, les indicateurs du tableau de bord et l’historique des changements de statut.
+- Le tableau admin inclut les indicateurs, les files d’activation/validation/retrait, la recherche d’utilisateurs et l’historique des changements de statut.
+
+## Version 11 : réparation du profil
+- Exécutez `supabase/migration_v11.sql` si l’inscription échoue avec une colonne `display_name` manquante. Elle ajoute aussi `avatar`, utilisé par l’édition du profil, sans toucher aux données existantes.
+
+## Version 12 : historique des transactions
+- Exécutez `supabase/migration_v12.sql` après les migrations v2, v3 et v4. Elle ajoute la fonction sécurisée `my_transactions`, limitée aux opérations de l’utilisateur connecté.
+- Dans Profil > Gains et retraits, l’historique détaille les gains validés, bonus de niveau/parrainage/défi, crédits promo ajoutés/utilisés/remboursés, retraits et preuves en attente ou refusées.
+- Le crédit promotionnel est affiché séparément du solde retirable.
+- Cette migration n’ajoute pas de nouvelle table : elle reconstitue l’historique à partir des données existantes. Les opérations antérieures ne sont visibles que si leurs données sont encore présentes dans ces tables.
+

@@ -1,0 +1,182 @@
+'use client';
+import { useCallback, useEffect, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
+import { configured, sb } from '@/lib/supabase';
+import { useI18n } from '@/lib/i18n';
+import type { Campaign, Ctx, Data, Profile, Proof, Tab, Withdrawal } from '@/lib/types';
+import { Icon } from './ui';
+import AuthView from './AuthView';
+import ResetView from './ResetView';
+import FeedView from './FeedView';
+import PublisherView from './PublisherView';
+import AdvertiserView from './AdvertiserView';
+import AdminView from './AdminView';
+import InstallButton from './InstallButton';
+import InstallBanner from './InstallBanner';
+import { HelpSheet } from './Sheets';
+import ProfileView from './ProfileView';
+import LangSelect from './LangSelect';
+import OfflineSync from './OfflineSync';
+import ScrollEffects from './ScrollEffects';
+
+const EMPTY: Data = { bal: 0, camps: [], proofs: [], wd: [], aP: [], aW: [], favs: [], myReviews: [], ratings: {} };
+
+export default function App() {
+  const { t } = useI18n();
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [d, setD] = useState<Data>(EMPTY);
+  const [tab, setTab] = useState<Tab>('f');
+  const [sel, setSel] = useState<number | null>(null);
+  const [recovery, setRecovery] = useState(false);
+  const [toast, setToast] = useState('');
+  const [sheet, setSheet] = useState<null | 'help'>(null);
+
+  const say = useCallback((m: string) => {
+    setToast(m);
+    setTimeout(() => setToast(''), 3200);
+  }, []);
+
+  const run = useCallback((fn: () => Promise<void>) => {
+    fn().catch((e: unknown) => say((e as { message?: string })?.message ?? String(e)));
+  }, [say]);
+
+  useEffect(() => {
+    const th = localStorage.getItem('theme');
+    if (th === 'light' || th === 'dark') document.documentElement.setAttribute('data-theme', th);
+  }, []);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [tab]);
+
+  useEffect(() => {
+    if (!configured) return;
+    const { data } = sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true);
+      setUser(session?.user ?? null);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  const load = useCallback(async (u: User) => {
+    await sb.rpc('expire_campaigns');
+    const [p, bal, c, pr, w, fv, rt, mr] = await Promise.all([
+      sb.from('profiles').select('*').eq('id', u.id).single(),
+      sb.rpc('my_balance'),
+      sb.from('campaigns').select('*').order('id', { ascending: false }),
+      sb.from('proofs').select('*').eq('user_id', u.id),
+      sb.from('withdrawals').select('*').eq('user_id', u.id),
+      sb.from('favorites').select('campaign_id'),
+      sb.rpc('ratings'),
+      sb.from('reviews').select('proof_id').eq('from_user', u.id),
+    ]);
+    const ratings: Data['ratings'] = {};
+    for (const r of ((rt.data ?? []) as { uid: string; dir: string; score: number; n: number }[])) {
+      if (r.dir === 'pub_to_adv') ratings[r.uid] = { score: Number(r.score), n: r.n };
+    }
+    const prof = (p.data ?? null) as Profile | null;
+    let aP: Proof[] = [];
+    let aW: Withdrawal[] = [];
+    if (prof?.role === 'admin') {
+      const [a, b] = await Promise.all([
+        sb.from('proofs').select('*,profiles(phone)').eq('status', 'pending'),
+        sb.from('withdrawals').select('*,profiles(phone)').eq('status', 'pending'),
+      ]);
+      aP = (a.data ?? []) as unknown as Proof[];
+      aW = (b.data ?? []) as unknown as Withdrawal[];
+    }
+    setProfile(prof);
+    setD({
+      bal: (bal.data as number | null) ?? 0,
+      camps: (c.data ?? []) as Campaign[],
+      proofs: (pr.data ?? []) as Proof[],
+      wd: (w.data ?? []) as Withdrawal[],
+      favs: ((fv.data ?? []) as { campaign_id: number }[]).map((x) => x.campaign_id),
+      myReviews: ((mr.data ?? []) as { proof_id: number }[]).map((x) => x.proof_id),
+      ratings,
+      aP,
+      aW,
+    });
+    if (prof?.role !== 'admin') setTab((x) => (x === 'm' ? 'f' : x));
+  }, []);
+
+  useEffect(() => {
+    if (!user) { setProfile(null); setD(EMPTY); return; }
+    const id = setTimeout(() => { load(user).catch(() => {}); }, 0);
+    return () => clearTimeout(id);
+  }, [user?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reload = useCallback(async () => { if (user) await load(user); }, [user, load]);
+
+  const toggleFav = useCallback((id: number) => {
+    if (!user) return;
+    const has = d.favs.includes(id);
+    setD((x) => ({ ...x, favs: has ? x.favs.filter((i) => i !== id) : [...x.favs, id] }));
+    run(async () => {
+      const r = has
+        ? await sb.from('favorites').delete().eq('campaign_id', id)
+        : await sb.from('favorites').insert({ campaign_id: id });
+      if (r.error) { await load(user); throw r.error; }
+    });
+  }, [user, d.favs, run, load]);
+
+  const admin = profile?.role === 'admin';
+  const tabs: Tab[] = admin ? ['f', 'd', 'a', 'm', 'p'] : ['f', 'd', 'a', 'p'];
+
+  let body: React.ReactNode;
+  if (!configured) body = <div className="card err">{t('cfg')}</div>;
+  else if (!user) body = <AuthView run={run} />;
+  else if (recovery) body = <ResetView run={run} say={say} done={() => setRecovery(false)} />;
+  else if (!profile) body = <p className="m">…</p>;
+  else {
+    const ctx: Ctx = { user, profile, d, reload, say, run, sel, pick: setSel, go: setTab, toggleFav };
+    body = (
+      <>
+        <OfflineSync c={ctx} />
+        {tab === 'f' ? <FeedView c={ctx} /> : tab === 'd' ? <PublisherView c={ctx} /> : tab === 'a' ? <AdvertiserView c={ctx} /> : tab === 'p' ? <ProfileView c={ctx} logout={() => { run(async () => { await sb.auth.signOut(); }); }} /> : <AdminView c={ctx} />}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <header className="app-header">
+        <div className="logo"><span className="mk">S</span><span>Statut<i>Pay</i></span></div>
+        <nav className="desktop-nav" aria-label="Navigation principale">
+          {user && !recovery && tabs.map((r) => (
+            <button key={r} className={tab === r ? 'on' : ''} aria-current={tab === r ? 'page' : undefined} onClick={() => setTab(r)}>
+              <Icon n={r} /><span>{t('r_' + r)}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="hr">
+          <InstallButton />
+          <button className="iconbtn" aria-label={t('help')} title={t('help')} onClick={() => setSheet('help')}><Icon n="help" /></button>
+          {user && profile && (
+            <button className="iconbtn avbtn" aria-label={t('profile')} title={t('profile')} onClick={() => setTab('p')}>
+              {profile.avatar ? <span aria-hidden="true">{profile.avatar}</span> : <Icon n="user" />}
+            </button>
+          )}
+          <LangSelect />
+        </div>
+      </header>
+      <main>
+        <ScrollEffects />
+        <InstallBanner />
+        {body}
+      </main>
+      {user && !recovery && (
+        <nav className="mobile-nav" aria-label="Navigation principale">
+          {tabs.map((r) => (
+            <button key={r} className={tab === r ? 'on' : ''} aria-current={tab === r ? 'page' : undefined} onClick={() => setTab(r)}>
+              <Icon n={r} /><span>{t('r_' + r)}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+      {sheet === 'help' && <HelpSheet profile={profile} onClose={() => setSheet(null)} />}
+      {toast && <div className="toast" role="status">{toast}</div>}
+    </>
+  );
+}

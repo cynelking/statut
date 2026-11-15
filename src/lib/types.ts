@@ -1,0 +1,46 @@
+import type { User } from '@supabase/supabase-js';
+
+export const ADMIN = '+22896292039';
+export const ADMIN_LINK = 'https://wa.me/22896292039';
+export const FEE = 500;
+export const BOOST_FEE = 1000;      // doit correspondre à create_campaign (migration_v3.sql)
+export const MIN_WITHDRAW = 500;
+export const REF_LEVELS = [100, 30, 10]; // doit correspondre à migration_v4.sql
+export const AMB_AT = 10;
+export const AMB_BONUS = 150;
+export const DAILY_GOAL = 3;        // idem migration_v3.sql
+export const DAILY_BONUS = 50;
+export const COUNTRIES = ['Togo', 'Bénin', 'Côte d’Ivoire', 'Sénégal', 'Burkina Faso', 'Mali', 'Niger', 'Cameroun', 'Gabon', 'Tchad', 'Congo', 'Guinée-Bissau', 'République centrafricaine', 'Guinée équatoriale'];
+export const OPERATORS = ['Orange Money', 'MTN MoMo', 'Moov Money', 'Wave', 'T-Money', 'Flooz'];
+export const AVATARS = ['🙂', '😎', '🦁', '🐯', '🦅', '🌟', '💼', '🚀'];
+
+export type Tab = 'f' | 'd' | 'a' | 'm' | 'p';
+export type CType = 'img' | 'vid' | 'txt';
+export interface Profile { id: string; phone: string; country: string | null; role: 'user' | 'admin'; ref_code: string | null; display_name: string | null; avatar: string | null; credit: number }
+export interface Campaign { id: number; owner: string; title: string; type: CType; content: string | null; media_url: string | null; budget: number; spent: number; status: 'pending' | 'active' | 'done'; country: string | null; created_at?: string; boost_hours: number; boost_until: string | null; credit_used: number; starts_at: string | null; ends_at: string | null }
+export interface Proof { id: number; campaign_id: number; user_id: string; image_path: string; views: number; bonus: number; status: 'pending' | 'approved' | 'rejected'; created_at?: string; profiles?: { phone: string } | null }
+export interface Withdrawal { id: number; user_id: string; amount: number; operator: string; status: 'pending' | 'paid'; created_at?: string; profiles?: { phone: string } | null }
+export type TransactionKind = 'earning' | 'level_bonus' | 'referral_bonus' | 'daily_bonus' | 'promo_credit' | 'credit_used' | 'credit_refund' | 'withdrawal' | 'proof_status';
+export type TransactionStatus = 'approved' | 'pending' | 'rejected' | 'paid' | 'credited' | 'used' | 'refunded';
+export interface Transaction {
+  transaction_id: string;
+  kind: TransactionKind;
+  title: string | null;
+  amount: number;
+  status: TransactionStatus;
+  occurred_at: string | null;
+}
+export interface Data {
+  bal: number; camps: Campaign[]; proofs: Proof[]; wd: Withdrawal[]; aP: Proof[]; aW: Withdrawal[];
+  favs: number[]; myReviews: number[]; ratings: Record<string, { score: number; n: number }>;
+}
+export interface Ctx {
+  user: User; profile: Profile; d: Data;
+  reload: () => Promise<void>;
+  say: (m: string) => void;
+  run: (fn: () => Promise<void>) => void;
+  sel: number | null;
+  pick: (id: number | null) => void;
+  go: (t: Tab) => void;
+  toggleFav: (id: number) => void;
+}
