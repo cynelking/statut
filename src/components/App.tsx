@@ -18,6 +18,7 @@ import ProfileView from './ProfileView';
 import LangSelect from './LangSelect';
 import OfflineSync from './OfflineSync';
 import ScrollEffects from './ScrollEffects';
+import LandingView from './LandingView';
 
 const EMPTY: Data = { bal: 0, camps: [], proofs: [], wd: [], aP: [], aW: [], favs: [], myReviews: [], ratings: {} };
 
@@ -81,7 +82,7 @@ export default function App() {
     if (prof?.role === 'admin') {
       const [a, b] = await Promise.all([
         sb.from('proofs').select('*,profiles(phone)').eq('status', 'pending'),
-        sb.from('withdrawals').select('*,profiles(phone)').eq('status', 'pending'),
+        sb.from('withdrawals').select('*,profiles(phone)').in('status', ['pending', 'processing']),
       ]);
       aP = (a.data ?? []) as unknown as Proof[];
       aW = (b.data ?? []) as unknown as Withdrawal[];
@@ -109,6 +110,37 @@ export default function App() {
 
   const reload = useCallback(async () => { if (user) await load(user); }, [user, load]);
 
+  useEffect(() => {
+    if (!user || typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const paymentId = url.searchParams.get('saspay_payment_id');
+    if (!paymentId) return;
+
+    let active = true;
+    void (async () => {
+      const session = await sb.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) return;
+      url.searchParams.delete('saspay_payment_id');
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+
+      const response = await fetch(`/api/saspay/payment-status?id=${encodeURIComponent(paymentId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json() as { status?: string; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Impossible de vérifier le paiement SasPay');
+      await load(user);
+      if (!active) return;
+      say(t(result.status === 'succeeded' ? 'saspay_return_paid'
+        : result.status === 'review' ? 'saspay_return_review'
+          : result.status === 'failed' ? 'saspay_return_failed' : 'saspay_return_pending'));
+    })().catch((reason: unknown) => {
+      if (active) say(reason instanceof Error ? reason.message : String(reason));
+    });
+
+    return () => { active = false; };
+  }, [user, load, say, t]);
+
   const toggleFav = useCallback((id: number) => {
     if (!user) return;
     const has = d.favs.includes(id);
@@ -125,8 +157,14 @@ export default function App() {
   const tabs: Tab[] = admin ? ['f', 'd', 'a', 'm', 'p'] : ['f', 'd', 'a', 'p'];
 
   let body: React.ReactNode;
-  if (!configured) body = <div className="card err">{t('cfg')}</div>;
-  else if (!user) body = <AuthView run={run} />;
+  if (!user) body = (
+    <>
+      <LandingView />
+      <section className="landing-auth" id="auth" aria-label={t('auth_choose')}>
+        {configured ? <AuthView run={run} /> : <div className="card err">{t('cfg')}</div>}
+      </section>
+    </>
+  );
   else if (recovery) body = <ResetView run={run} say={say} done={() => setRecovery(false)} />;
   else if (!profile) body = <p className="m">…</p>;
   else {

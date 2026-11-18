@@ -56,6 +56,8 @@ export default function AdminActivity() {
     if (status === 'active') return t('st_active');
     if (status === 'done') return t('st_done');
     if (status === 'paid') return t('admin_status_paid');
+    if (status === 'processing') return t('admin_status_processing');
+    if (status === 'failed') return t('admin_status_failed');
     return t('pd');
   }
 

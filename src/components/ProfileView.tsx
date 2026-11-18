@@ -43,9 +43,12 @@ export default function ProfileView({ c, logout }: { c: Ctx; logout: () => void 
   const approvedViews = approvedProofs.reduce((sum, proof) => sum + proof.views, 0);
   const myCampaigns = c.d.camps.filter((campaign) => campaign.owner === c.user.id);
   const activeCampaigns = myCampaigns.filter((campaign) => campaign.status === 'active').length;
-  const withdrawn = c.d.wd.reduce((sum, withdrawal) => sum + withdrawal.amount, 0);
+  const withdrawn = c.d.wd.filter((withdrawal) => withdrawal.status !== 'failed')
+    .reduce((sum, withdrawal) => sum + withdrawal.amount, 0);
   const paidWithdrawals = c.d.wd.filter((withdrawal) => withdrawal.status === 'paid');
-  const pendingWithdrawals = c.d.wd.filter((withdrawal) => withdrawal.status === 'pending');
+  const pendingWithdrawals = c.d.wd.filter((withdrawal) =>
+    withdrawal.status === 'pending' || withdrawal.status === 'processing',
+  );
   const paidTotal = paidWithdrawals.reduce((sum, withdrawal) => sum + withdrawal.amount, 0);
   const pendingTotal = pendingWithdrawals.reduce((sum, withdrawal) => sum + withdrawal.amount, 0);
   const recentProofs = [...c.d.proofs]

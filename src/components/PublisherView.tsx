@@ -1,18 +1,24 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { sb } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
-import { Ctx, DAILY_BONUS, DAILY_GOAL, MIN_WITHDRAW, OPERATORS } from '@/lib/types';
+import { Ctx, DAILY_BONUS, DAILY_GOAL, MIN_WITHDRAW } from '@/lib/types';
 import Leaderboard from './Leaderboard';
 import ReferralCard from './ReferralCard';
 import LevelCard from './LevelCard';
 import RateForm from './RateForm';
 import { isNet, queueProof } from '@/lib/offline';
+import { COUNTRY_CODES, type SasPayCountry, type SasPayNetwork } from '@/lib/saspay';
 
 export default function PublisherView({ c }: { c: Ctx }) {
   const { t, f } = useI18n();
   const [file, setFile] = useState<File | null>(null);
-  const [op, setOp] = useState(OPERATORS[0]);
+  const [payCountries, setPayCountries] = useState<SasPayCountry[]>([]);
+  const [payNetworks, setPayNetworks] = useState<SasPayNetwork[]>([]);
+  const [withdrawCountry, setWithdrawCountry] = useState(COUNTRY_CODES[c.profile.country || ''] || '');
+  const [withdrawNetwork, setWithdrawNetwork] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState(c.profile.phone);
+  const [networkError, setNetworkError] = useState('');
   const [rating, setRating] = useState<number | null>(null);
   const sel = c.sel;
   const my = c.d.proofs;
@@ -23,6 +29,42 @@ export default function PublisherView({ c }: { c: Ctx }) {
   const today = new Date().toISOString().slice(0, 10);
   const todayN = my.filter((p) => p.created_at?.slice(0, 10) === today && p.status !== 'rejected').length;
   const reviewed = new Set(c.d.myReviews);
+  const activeCountries = payCountries.filter((country) =>
+    payNetworks.some((network) => network.country === country.iso_code && network.is_active),
+  );
+  const countryNetworks = payNetworks.filter((network) =>
+    network.country === withdrawCountry && network.is_active,
+  );
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const session = await sb.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) throw new Error('Connectez-vous pour charger les réseaux de retrait');
+      const response = await fetch('/api/saspay/networks', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json() as { countries?: SasPayCountry[]; networks?: SasPayNetwork[]; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Impossible de charger les réseaux SasPay');
+      if (!active) return;
+      const countries = result.countries ?? [];
+      const networks = result.networks ?? [];
+      setPayCountries(countries);
+      setPayNetworks(networks);
+      const preferred = COUNTRY_CODES[c.profile.country || ''] || '';
+      const firstCountry = countries.find((country) =>
+        networks.some((network) => network.country === country.iso_code && network.is_active),
+      )?.iso_code || '';
+      const selectedCountry = countries.some((country) => country.iso_code === preferred) ? preferred : firstCountry;
+      setWithdrawCountry(selectedCountry);
+      setWithdrawNetwork(networks.find((network) => network.country === selectedCountry && network.is_active)?.code || '');
+    })().catch((reason: unknown) => {
+      if (active) setNetworkError(reason instanceof Error ? reason.message : String(reason));
+    });
+    return () => { active = false; };
+  }, [c.profile.country]);
+
   function sendProof() {
     c.run(async () => {
       if (!file || sel === null || !file.type.startsWith('image/') || file.size > 5 * 1048576) throw new Error(t('nofile'));
@@ -44,7 +86,16 @@ export default function PublisherView({ c }: { c: Ctx }) {
   }
   function withdraw() {
     c.run(async () => {
-      const r = await sb.rpc('request_withdrawal', { p_amount: c.d.bal, p_operator: op });
+      const selectedNetwork = countryNetworks.find((network) => network.code === withdrawNetwork);
+      if (!selectedNetwork) throw new Error(t('saspay_network_required'));
+      if (!recipientPhone.trim()) throw new Error(t('saspay_phone_required'));
+      const r = await sb.rpc('request_withdrawal', {
+        p_amount: c.d.bal,
+        p_operator: selectedNetwork.name,
+        p_country: withdrawCountry,
+        p_network: selectedNetwork.code,
+        p_phone: recipientPhone.trim(),
+      });
       if (r.error) throw r.error;
       await c.reload();
       c.say(t('wdok'));
@@ -111,12 +162,24 @@ export default function PublisherView({ c }: { c: Ctx }) {
 
       <section className="card">
         <h2>{t('wd')}</h2>
-        <label htmlFor="op">{t('op')}</label>
-        <select id="op" value={op} onChange={(e) => setOp(e.target.value)}>
-          {OPERATORS.map((o) => <option key={o}>{o}</option>)}
+        {networkError && <p className="err" role="alert">{networkError}</p>}
+        <label htmlFor="withdraw-country">{t('country')}</label>
+        <select id="withdraw-country" value={withdrawCountry} onChange={(e) => {
+          const nextCountry = e.target.value;
+          setWithdrawCountry(nextCountry);
+          setWithdrawNetwork(payNetworks.find((network) => network.country === nextCountry && network.is_active)?.code || '');
+        }}>
+          {activeCountries.map((country) => <option key={country.iso_code} value={country.iso_code}>{country.name} · {country.default_currency}</option>)}
         </select>
+        <label htmlFor="withdraw-network">{t('op')}</label>
+        <select id="withdraw-network" value={withdrawNetwork} onChange={(e) => setWithdrawNetwork(e.target.value)}>
+          {countryNetworks.map((network) => <option key={network.code} value={network.code}>{network.name}</option>)}
+        </select>
+        <label htmlFor="withdraw-phone">{t('saspay_recipient_phone')}</label>
+        <input id="withdraw-phone" type="tel" autoComplete="tel" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} />
         <p className="m">{t('wdmin')}</p>
-        <button className="p" disabled={c.d.bal < MIN_WITHDRAW} onClick={withdraw}>{t('wdb')} {f(c.d.bal)}</button>
+        <button className="p" disabled={c.d.bal < MIN_WITHDRAW || !withdrawNetwork || !!networkError} onClick={withdraw}>{t('wdb')} {f(c.d.bal)}</button>
+        <p className="m">{t('saspay_payout_admin_note')}</p>
       </section>
     </>
   );

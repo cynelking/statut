@@ -20,8 +20,10 @@ export default function AdminView({ c }: { c: Ctx }) {
   const [st, setSt] = useState<Stats | null>(null);
   const [statsError, setStatsError] = useState('');
   const [views, setViews] = useState<Record<number, string>>({});
+  const [payoutBusy, setPayoutBusy] = useState<number | null>(null);
   const { camps, aP, aW } = c.d;
-  const toActivate = camps.filter((x) => x.status === 'pending');
+  const toActivate = camps.filter((x) => x.status === 'pending' && x.payment_provider !== 'saspay');
+  const toReviewPayment = camps.filter((x) => x.status === 'pending' && x.payment_status === 'review');
   const title = (id: number) => camps.find((x) => x.id === id)?.title ?? '#' + id;
 
   useEffect(() => {
@@ -63,6 +65,14 @@ export default function AdminView({ c }: { c: Ctx }) {
       c.say(msg);
     });
   }
+  function resolvePaymentReview(id: number) {
+    c.run(async () => {
+      const r = await sb.rpc('admin_resolve_saspay_payment_review', { p_campaign_id: id });
+      if (r.error) throw r.error;
+      await c.reload();
+      c.say(t('saspay_review_done'));
+    });
+  }
   function seeProof(path: string) {
     c.run(async () => {
       const r = await sb.storage.from('proofs').createSignedUrl(path, 120);
@@ -79,11 +89,25 @@ export default function AdminView({ c }: { c: Ctx }) {
       await done();
     });
   }
-  function markPaid(id: number) {
+  function processPayout(id: number) {
     c.run(async () => {
-      const r = await sb.from('withdrawals').update({ status: 'paid' }).eq('id', id);
-      if (r.error) throw r.error;
-      await done();
+      setPayoutBusy(id);
+      try {
+        const token = (await sb.auth.getSession()).data.session?.access_token;
+        if (!token) throw new Error(t('auth_login_hint'));
+        const response = await fetch('/api/saspay/payout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ withdrawalId: id }),
+        });
+        const result = await response.json() as { status?: string; error?: string };
+        if (!response.ok) throw new Error(result.error || 'Impossible de traiter le payout SasPay');
+        await c.reload();
+        c.say(t(result.status === 'paid' ? 'saspay_payout_paid'
+          : result.status === 'failed' ? 'saspay_payout_failed' : 'saspay_payout_pending'));
+      } finally {
+        setPayoutBusy(null);
+      }
     });
   }
 
@@ -92,7 +116,8 @@ export default function AdminView({ c }: { c: Ctx }) {
       <div className="admin-tabs" role="tablist" aria-label={t('manage')}>
         <button className={'s' + (view === 'dash' ? ' on' : '')} role="tab" aria-selected={view === 'dash'} onClick={() => setView('dash')}>{t('dash')}</button>
         <button className={'s' + (view === 'manage' ? ' on' : '')} role="tab" aria-selected={view === 'manage'} onClick={() => setView('manage')}>
-          {t('manage')}{aP.length + aW.length + toActivate.length > 0 ? ` (${aP.length + aW.length + toActivate.length})` : ''}
+          {t('manage')}{aP.length + aW.length + toActivate.length + toReviewPayment.length > 0
+            ? ` (${aP.length + aW.length + toActivate.length + toReviewPayment.length})` : ''}
         </button>
         <button className={'s' + (view === 'users' ? ' on' : '')} role="tab" aria-selected={view === 'users'} onClick={() => setView('users')}>{t('k_users')}</button>
         <button className={'s' + (view === 'activity' ? ' on' : '')} role="tab" aria-selected={view === 'activity'} onClick={() => setView('activity')}>{t('admin_activity')}</button>
@@ -144,6 +169,19 @@ export default function AdminView({ c }: { c: Ctx }) {
             ))}
           </section>
 
+          {toReviewPayment.length > 0 && (
+            <section className="card">
+              <h2>{t('saspay_review_title')}</h2>
+              <p className="note">{t('saspay_review_note')}</p>
+              {toReviewPayment.map((campaign) => (
+                <div className="row" key={campaign.id}>
+                  <div><b>{campaign.title}</b><div className="m">{f(campaign.budget)} · {campaign.country ?? t('all_c')}</div></div>
+                  <button className="s" onClick={() => resolvePaymentReview(campaign.id)}>{t('saspay_review_action')}</button>
+                </div>
+              ))}
+            </section>
+          )}
+
           <section className="card">
             <h2>{t('queue')}</h2>
             <p className="note">{t('adminnote')}</p>
@@ -166,8 +204,14 @@ export default function AdminView({ c }: { c: Ctx }) {
             {aW.length === 0 && <p className="m">{t('none')}</p>}
             {aW.map((w, i) => (
               <div className={'row' + (i === 0 ? ' first' : '')} key={w.id}>
-                <div><b>{w.profiles?.phone}</b><div className="m">{w.operator} · {f(w.amount)}</div></div>
-                <button className="s" onClick={() => markPaid(w.id)}>{t('paidb')}</button>
+                <div>
+                  <b>{w.profiles?.phone}</b>
+                  <div className="m">{w.operator} · {w.recipient_network || '—'} · {w.recipient_country || '—'} · {w.recipient_phone || w.profiles?.phone} · {f(w.amount)}</div>
+                  {w.status === 'processing' && <span className="tag w">{t('saspay_payout_pending')}</span>}
+                </div>
+                <button className="s" disabled={payoutBusy === w.id} onClick={() => processPayout(w.id)}>
+                  {payoutBusy === w.id ? '…' : t('saspay_payout_action')}
+                </button>
               </div>
             ))}
           </section>

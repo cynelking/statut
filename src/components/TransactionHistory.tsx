@@ -29,8 +29,10 @@ const KIND_LABELS: Record<Transaction['kind'], string> = {
 const STATUS_LABELS: Record<Transaction['status'], string> = {
   approved: 'tx_approved',
   pending: 'tx_pending',
+  processing: 'tx_processing',
   rejected: 'tx_rejected',
   paid: 'tx_paid',
+  failed: 'tx_failed',
   credited: 'tx_credited',
   used: 'tx_used',
   refunded: 'tx_refunded',
@@ -83,7 +85,8 @@ export default function TransactionHistory() {
       {items.length > 0 && (
         <div className="transaction-list">
           {items.map((item) => {
-            const statusClass = item.status === 'pending' ? 'w' : item.status === 'rejected' ? 'bad' : 'ok';
+            const statusClass = item.status === 'pending' || item.status === 'processing'
+              ? 'w' : item.status === 'rejected' || item.status === 'failed' ? 'bad' : 'ok';
             const detail = item.kind === 'referral_bonus' && item.title
               ? `${t('tx_level')} ${item.title}`
               : item.title;

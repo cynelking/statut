@@ -3,7 +3,7 @@
 ## Installation
 1. `npm install`
 2. Copiez `.env.local.example` en `.env.local` et renseignez l’URL et la clé **anon** (Supabase > Project Settings > API).
-3. Supabase > SQL Editor : collez `supabase/schema.sql` puis Run, **puis** `supabase/migration_v2.sql` puis Run (parrainage, favoris, classement, notifications, tableau de bord), **puis** `supabase/migration_v3.sql` puis Run (codes promo, boost, niveaux, avis, défis, rapports, profil), **puis** `supabase/migration_v4.sql` puis Run (campagnes programmées, parrainage 3 niveaux), **puis** `supabase/migration_v5.sql` puis Run (désactivation de l'ancienne vérification SMS), **puis** `supabase/migration_v6.sql` puis Run (médias pour les annonces), **puis** `supabase/migration_v7.sql` puis Run (réparation des colonnes de crédit manquantes), **puis** `supabase/migration_v8.sql` puis Run (réparation des colonnes de campagne manquantes), **puis** `supabase/migration_v9.sql` puis Run (administration), puis `supabase/migration_v11.sql` puis Run (réparation des colonnes du profil), et enfin `supabase/migration_v12.sql` puis Run (historique des transactions).
+3. Supabase > SQL Editor : collez `supabase/schema.sql` puis Run, **puis** `supabase/migration_v2.sql` puis Run (parrainage, favoris, classement, notifications, tableau de bord), **puis** `supabase/migration_v3.sql` puis Run (codes promo, boost, niveaux, avis, défis, rapports, profil), **puis** `supabase/migration_v4.sql` puis Run (campagnes programmées, parrainage 3 niveaux), **puis** `supabase/migration_v5.sql` puis Run (désactivation de l'ancienne vérification SMS), **puis** `supabase/migration_v6.sql` puis Run (médias pour les annonces), **puis** `supabase/migration_v7.sql` puis Run (réparation des colonnes de crédit manquantes), **puis** `supabase/migration_v8.sql` puis Run (réparation des colonnes de campagne manquantes), **puis** `supabase/migration_v9.sql` puis Run (administration), puis `supabase/migration_v11.sql` puis Run (réparation des colonnes du profil), `supabase/migration_v12.sql` puis Run (historique des transactions), et enfin `supabase/migration_v13.sql` puis Run (paiements SasPay).
 4. Supabase > Authentication > Providers > Email : laissez **« Confirm email » activé** (confirmation par e-mail obligatoire).
 5. Supabase > Authentication > URL Configuration :
    - **Site URL** = l’adresse de votre site (ex : https://statutpay.vercel.app)
@@ -24,9 +24,19 @@ Reconnectez-vous : l’onglet Admin apparaît.
 - Si le journal mentionne `column "display_name" of relation "profiles" does not exist`, exécutez `supabase/migration_v11.sql` dans le SQL Editor Supabase, puis réessayez.
 
 ## Mise en ligne (Vercel)
-Poussez le dossier sur GitHub, importez le dépôt sur vercel.com, ajoutez les deux variables
-`NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`, puis Deploy.
-Le service worker et l’installation PWA ne fonctionnent qu’en production (`npm run build && npm start`) et en HTTPS.
+1. Vérifiez localement `npm ci` puis `npm run build`. Le dépôt contient `package-lock.json`; ne publiez jamais `.env.local` (il est ignoré par Git).
+2. Poussez les changements sur GitHub, puis importez le dépôt dans Vercel. Vercel doit détecter **Next.js** automatiquement; gardez la racine du projet et les paramètres de build par défaut (la commande de build est `npm run build`). Aucun `vercel.json` ni commande de démarrage personnalisée n’est nécessaire.
+3. Dans **Project Settings > Environment Variables**, ajoutez les variables nécessaires dans les environnements Preview et/ou Production :
+   - `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY` : valeurs Supabase du projet.
+   - `SUPABASE_SERVICE_ROLE_KEY` : clé secrète Supabase, uniquement côté serveur.
+   - `APP_BASE_URL` : URL HTTPS publique de l’environnement déployé, sans slash final.
+   - `SASPAY_API_BASE_URL=https://api.saspay.me/api/v1`, `SASPAY_API_KEY` et `SASPAY_WEBHOOK_SECRET` : identifiants et secret SasPay du même environnement.
+   - Pour les notifications push, ajoutez aussi `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` et `VAPID_SUBJECT`. La clé privée VAPID reste secrète.
+4. Pour tester, utilisez `SASPAY_API_BASE_URL=https://sandbox-api.saspay.me/api/v1` et les identifiants sandbox; gardez `SASPAY_PAYOUTS_ENABLED=false`. Utilisez une URL stable accessible en HTTPS pour `APP_BASE_URL` et configurez le webhook SasPay sandbox vers `https://statutpay.vercel.app/webhooks/saspay`.
+5. Dans Supabase > Authentication > URL Configuration, configurez l’URL du site et les URL de redirection Vercel (production et preview si nécessaire). Appliquez toutes les migrations, y compris `migration_v13.sql`, avant de tester les fonctions SasPay.
+6. Vérifiez le déploiement Preview et le parcours sandbox avant de déployer en production. Pour la production, remplacez l’URL et les clés SasPay par celles de production. N’activez les payouts qu’après confirmation de l’IP sortante fixe et son autorisation par SasPay.
+
+Vercel fournit HTTPS; le service worker et l’installation PWA sont actifs sur les déploiements de production.
 
 ## Structure
 - `src/app` : layout, page, styles
@@ -99,4 +109,12 @@ Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, 
 - Dans Profil > Gains et retraits, l’historique détaille les gains validés, bonus de niveau/parrainage/défi, crédits promo ajoutés/utilisés/remboursés, retraits et preuves en attente ou refusées.
 - Le crédit promotionnel est affiché séparément du solde retirable.
 - Cette migration n’ajoute pas de nouvelle table : elle reconstitue l’historique à partir des données existantes. Les opérations antérieures ne sont visibles que si leurs données sont encore présentes dans ces tables.
+
+## Version 13 : paiements et retraits SasPay
+- Exécutez `supabase/migration_v13.sql` après la migration v12. Les annonceurs sont redirigés vers le checkout SasPay; une campagne est activée seulement après confirmation vérifiée du paiement. Les diffuseurs choisissent un pays, un réseau actif et un numéro Mobile Money; un administrateur approuve chaque demande avant l’envoi.
+- Configurez `.env.local` et les variables Vercel avec `APP_BASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SASPAY_API_BASE_URL`, `SASPAY_API_KEY` et `SASPAY_WEBHOOK_SECRET`. Gardez l’URL sandbox pendant les tests; ne mettez jamais les clés SasPay ni la clé `service_role` dans le navigateur ou dans GitHub.
+- Dans SasPay, créez un webhook vers `https://statutpay.vercel.app/webhooks/saspay` et abonnez-le à `transaction.success` et `transaction.failed`. Configurez le même secret de signature dans `SASPAY_WEBHOOK_SECRET`. La route accepte également `/api/saspay/webhook`. La page de retour vérifie aussi le statut auprès de l’API SasPay; elle ne valide jamais seule un paiement.
+- Configurez le mode de frais du marchand pour que le montant net reçu couvre le montant de la campagne. Si le net est inférieur, la campagne reste en vérification manuelle et n’est pas activée.
+- Les payouts réels sont désactivés par défaut (`SASPAY_PAYOUTS_ENABLED=false`). SasPay n’accepte pas les payouts en sandbox et exige une IP sortante fixe autorisée côté marchand. Vérifiez que l’hébergeur fournit bien cette IP et faites-la autoriser par SasPay avant de passer l’API en production et d’activer explicitement les payouts.
+- Un webhook de payout confirme le paiement; si un payout échoue, son statut est marqué comme échoué et le solde réservé est libéré. Ne marquez pas manuellement un payout comme payé.
 

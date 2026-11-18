@@ -7,7 +7,7 @@ import { PwaProvider } from '@/lib/pwa';
 
 export const metadata: Metadata = {
   title: 'StatutPay',
-  description: 'Gagnez de l’argent en publiant des pubs sur vos statuts WhatsApp.',
+  description: 'StatutPay met en relation annonceurs et diffuseurs pour promouvoir des campagnes sur les statuts WhatsApp.',
   manifest: '/manifest.webmanifest',
   icons: { icon: '/icons/icon-192.png', apple: '/icons/apple-touch-icon.png' },
   appleWebApp: { capable: true, title: 'StatutPay', statusBarStyle: 'default' },
