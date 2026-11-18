@@ -17,6 +17,7 @@
 Inscrivez-vous dans l’app avec votre e-mail et le numéro +22896292039 (confirmez l’e-mail), puis dans le SQL Editor :
 `update public.profiles set role='admin' where phone='+22896292039';`
 Reconnectez-vous : l’onglet Admin apparaît.
+Dans Admin > Utilisateurs, l’export CSV télécharge les contacts actuellement inscrits (nom et numéro WhatsApp), avec des colonnes compatibles avec l’import Google Contacts. Un nouveau téléchargement inclut automatiquement les nouvelles inscriptions; le fichier contient des données personnelles et doit être conservé avec précaution.
 
 ## Erreur pendant l’inscription
 - Le message « Ce numéro WhatsApp est déjà utilisé » n’est affiché que si l’erreur Supabase indique explicitement une contrainte unique sur le téléphone. Une erreur générique d’enregistrement du profil ne signifie pas que le numéro est déjà pris.
