@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { dispatchCampaignNotifications } from '@/lib/campaign-notifications';
 import { alphaPayRequest, asRecord, getAdminClient, getAlphaPayConfig } from '@/lib/alphapay-server';
 
 export const runtime = 'nodejs';
@@ -174,6 +175,13 @@ export async function POST(request: NextRequest) {
           data,
           status,
         );
+        if (campaignMatched) {
+          try {
+            await dispatchCampaignNotifications();
+          } catch (reason) {
+            console.error('Campaign push dispatch after AlphaPay webhook failed', reason);
+          }
+        }
         const topupMatched = campaignMatched ? false : await applyWalletTopupTransaction(
           admin,
           transactionId,

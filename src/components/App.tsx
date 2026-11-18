@@ -115,6 +115,19 @@ export default function App() {
       walletTopupsReview,
     });
     if (prof?.role !== 'admin') setTab((x) => (x === 'm' ? 'f' : x));
+
+    if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
+      const session = await sb.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (token) {
+        void fetch('/api/notify', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }).then(async (response) => {
+          if (!response.ok) console.error('Campaign push dispatch failed', await response.text());
+        }).catch((reason: unknown) => console.error('Campaign push dispatch failed', reason));
+      }
+    }
   }, []);
 
   useEffect(() => {

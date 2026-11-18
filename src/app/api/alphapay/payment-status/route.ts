@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { dispatchCampaignNotifications } from '@/lib/campaign-notifications';
 import { errorResponse, getAdminClient, getRequestUser, syncAlphaPayCampaignPayment } from '@/lib/alphapay-server';
 
 export const runtime = 'nodejs';
@@ -21,6 +22,13 @@ export async function GET(request: NextRequest) {
     if (!payment.checkout_session_id) return NextResponse.json({ status: 'pending' });
 
     const status = await syncAlphaPayCampaignPayment(payment.id, payment.checkout_session_id);
+    if (status === 'succeeded') {
+      try {
+        await dispatchCampaignNotifications();
+      } catch (reason) {
+        console.error('Campaign push dispatch after AlphaPay status check failed', reason);
+      }
+    }
     return NextResponse.json({ status });
   } catch (reason) {
     const result = errorResponse(reason);
