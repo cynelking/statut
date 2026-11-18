@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       if (!checkoutUrl || !sessionId) throw new Error('AlphaPay n’a pas renvoyé la session de paiement attendue');
       const parsedUrl = new URL(checkoutUrl);
       if (parsedUrl.protocol !== 'https:' || !['pay.alphapay.me', 'sandbox-checkout.alphapay.me'].includes(parsedUrl.hostname)) {
-        throw new Error('AlphaPay a renvoyé une adresse de paiement non autorisée');
+        throw new Error(`AlphaPay a renvoyé une adresse de paiement non autorisée (hôte : ${parsedUrl.hostname || 'invalide'})`);
       }
 
       const saved = await getAdminClient()
