@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       const sessionId = typeof providerResult.id === 'string' ? providerResult.id : '';
       if (!checkoutUrl || !sessionId) throw new Error('AlphaPay n’a pas renvoyé la session de paiement attendue');
       const parsedUrl = new URL(checkoutUrl);
-      if (parsedUrl.protocol !== 'https:' || !['pay.alphapay.me', 'sandbox-checkout.alphapay.me'].includes(parsedUrl.hostname)) {
+      if (parsedUrl.protocol !== 'https:' || !['pay.alphapay.me', 'checkout.alphapay.me', 'sandbox-checkout.alphapay.me'].includes(parsedUrl.hostname)) {
         throw new Error(`AlphaPay a renvoyé une adresse de paiement non autorisée (hôte : ${parsedUrl.hostname || 'invalide'})`);
       }
 
