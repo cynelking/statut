@@ -17,10 +17,10 @@ export const AVATARS = ['🙂', '😎', '🦁', '🐯', '🦅', '🌟', '💼', 
 export type Tab = 'f' | 'd' | 'a' | 'm' | 'p';
 export type CType = 'img' | 'vid' | 'txt';
 export interface Profile { id: string; phone: string; country: string | null; role: 'user' | 'admin'; ref_code: string | null; display_name: string | null; avatar: string | null; credit: number }
-export interface Campaign { id: number; owner: string; title: string; type: CType; content: string | null; media_url: string | null; budget: number; spent: number; status: 'pending' | 'active' | 'done'; country: string | null; created_at?: string; boost_hours: number; boost_until: string | null; credit_used: number; starts_at: string | null; ends_at: string | null; payment_provider?: 'saspay' | null; payment_status?: 'pending' | 'paid' | 'failed' | 'review' | null }
+export interface Campaign { id: number; owner: string; title: string; type: CType; content: string | null; media_url: string | null; budget: number; spent: number; status: 'pending' | 'active' | 'done'; country: string | null; created_at?: string; boost_hours: number; boost_until: string | null; credit_used: number; wallet_used?: number; starts_at: string | null; ends_at: string | null; payment_provider?: 'saspay' | 'wallet' | null; payment_status?: 'pending' | 'paid' | 'failed' | 'review' | null }
 export interface Proof { id: number; campaign_id: number; user_id: string; image_path: string; views: number; bonus: number; status: 'pending' | 'approved' | 'rejected'; created_at?: string; profiles?: { phone: string } | null }
 export interface Withdrawal { id: number; user_id: string; amount: number; operator: string; status: 'pending' | 'processing' | 'paid' | 'failed'; recipient_country?: string | null; recipient_network?: string | null; recipient_phone?: string | null; saspay_payout_id?: string | null; created_at?: string; profiles?: { phone: string } | null }
-export type TransactionKind = 'earning' | 'level_bonus' | 'referral_bonus' | 'daily_bonus' | 'promo_credit' | 'credit_used' | 'credit_refund' | 'withdrawal' | 'proof_status';
+export type TransactionKind = 'earning' | 'level_bonus' | 'referral_bonus' | 'daily_bonus' | 'promo_credit' | 'credit_used' | 'credit_refund' | 'wallet_topup' | 'wallet_used' | 'wallet_refund' | 'withdrawal' | 'proof_status';
 export type TransactionStatus = 'approved' | 'pending' | 'processing' | 'rejected' | 'paid' | 'failed' | 'credited' | 'used' | 'refunded';
 export interface Transaction {
   transaction_id: string;
@@ -30,8 +30,20 @@ export interface Transaction {
   status: TransactionStatus;
   occurred_at: string | null;
 }
+export interface WalletTopupReview {
+  id: string;
+  user_id: string;
+  amount: number;
+  currency: string;
+  country: string;
+  provider_transaction_id: string | null;
+  verified_net_amount: number | null;
+  verified_currency: string | null;
+  created_at: string;
+}
 export interface Data {
-  bal: number; camps: Campaign[]; proofs: Proof[]; wd: Withdrawal[]; aP: Proof[]; aW: Withdrawal[];
+  bal: number; walletBalance: number; camps: Campaign[]; proofs: Proof[]; wd: Withdrawal[]; aP: Proof[]; aW: Withdrawal[];
+  walletTopupsReview: WalletTopupReview[];
   favs: number[]; myReviews: number[]; ratings: Record<string, { score: number; n: number }>;
 }
 export interface Ctx {

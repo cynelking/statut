@@ -20,6 +20,7 @@ export default function PublisherView({ c }: { c: Ctx }) {
   const [recipientPhone, setRecipientPhone] = useState(c.profile.phone);
   const [networkError, setNetworkError] = useState('');
   const [rating, setRating] = useState<number | null>(null);
+  const [withdrawing, setWithdrawing] = useState(false);
   const sel = c.sel;
   const my = c.d.proofs;
   const approved = my.filter((p) => p.status === 'approved');
@@ -86,19 +87,42 @@ export default function PublisherView({ c }: { c: Ctx }) {
   }
   function withdraw() {
     c.run(async () => {
-      const selectedNetwork = countryNetworks.find((network) => network.code === withdrawNetwork);
-      if (!selectedNetwork) throw new Error(t('saspay_network_required'));
-      if (!recipientPhone.trim()) throw new Error(t('saspay_phone_required'));
-      const r = await sb.rpc('request_withdrawal', {
-        p_amount: c.d.bal,
-        p_operator: selectedNetwork.name,
-        p_country: withdrawCountry,
-        p_network: selectedNetwork.code,
-        p_phone: recipientPhone.trim(),
-      });
-      if (r.error) throw r.error;
-      await c.reload();
-      c.say(t('wdok'));
+      setWithdrawing(true);
+      try {
+        const selectedNetwork = countryNetworks.find((network) => network.code === withdrawNetwork);
+        if (!selectedNetwork) throw new Error(t('saspay_network_required'));
+        if (!recipientPhone.trim()) throw new Error(t('saspay_phone_required'));
+        const token = (await sb.auth.getSession()).data.session?.access_token;
+        if (!token) throw new Error(t('auth_login_hint'));
+        let response: Response;
+        try {
+          response = await fetch('/api/saspay/payout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              amount: c.d.bal,
+              country: withdrawCountry,
+              network: selectedNetwork.code,
+              operator: selectedNetwork.name,
+              phone: recipientPhone.trim(),
+            }),
+          });
+        } catch (reason) {
+          await c.reload();
+          throw new Error(`${t('wd_check_status')} ${reason instanceof Error ? reason.message : String(reason)}`);
+        }
+        const result = await response.json() as { status?: string; error?: string };
+        if (!response.ok) throw new Error(result.error || 'Impossible de traiter le retrait SasPay');
+        await c.reload();
+        if (result.status === 'pending' && result.error) {
+          c.say(`${t('wd_saved_pending')} ${result.error}`);
+          return;
+        }
+        c.say(t(result.status === 'paid' ? 'saspay_payout_paid'
+          : result.status === 'failed' ? 'saspay_payout_failed' : 'saspay_payout_pending'));
+      } finally {
+        setWithdrawing(false);
+      }
     });
   }
   function rate(proofId: number, stars: number, comment: string) {
@@ -178,8 +202,9 @@ export default function PublisherView({ c }: { c: Ctx }) {
         <label htmlFor="withdraw-phone">{t('saspay_recipient_phone')}</label>
         <input id="withdraw-phone" type="tel" autoComplete="tel" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} />
         <p className="m">{t('wdmin')}</p>
-        <button className="p" disabled={c.d.bal < MIN_WITHDRAW || !withdrawNetwork || !!networkError} onClick={withdraw}>{t('wdb')} {f(c.d.bal)}</button>
-        <p className="m">{t('saspay_payout_admin_note')}</p>
+        <p className="m">{t('wd_proof_only')}</p>
+        <button className="p" disabled={withdrawing || c.d.bal < MIN_WITHDRAW || !withdrawNetwork || !!networkError} onClick={withdraw}>{withdrawing ? '…' : `${t('wdb')} ${f(c.d.bal)}`}</button>
+        <p className="m">{t('saspay_payout_auto_note')}</p>
       </section>
     </>
   );

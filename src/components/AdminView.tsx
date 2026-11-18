@@ -21,7 +21,8 @@ export default function AdminView({ c }: { c: Ctx }) {
   const [statsError, setStatsError] = useState('');
   const [views, setViews] = useState<Record<number, string>>({});
   const [payoutBusy, setPayoutBusy] = useState<number | null>(null);
-  const { camps, aP, aW } = c.d;
+  const [topupBusy, setTopupBusy] = useState<string | null>(null);
+  const { camps, aP, aW, walletTopupsReview } = c.d;
   const toActivate = camps.filter((x) => x.status === 'pending' && x.payment_provider !== 'saspay');
   const toReviewPayment = camps.filter((x) => x.status === 'pending' && x.payment_status === 'review');
   const title = (id: number) => camps.find((x) => x.id === id)?.title ?? '#' + id;
@@ -73,6 +74,19 @@ export default function AdminView({ c }: { c: Ctx }) {
       c.say(t('saspay_review_done'));
     });
   }
+  function resolveTopupReview(id: string) {
+    c.run(async () => {
+      setTopupBusy(id);
+      try {
+        const r = await sb.rpc('admin_resolve_saspay_wallet_topup', { p_topup_id: id });
+        if (r.error) throw r.error;
+        await c.reload();
+        c.say(`${t('saspay_topup_review_done')} ${f(Number(r.data))}`);
+      } finally {
+        setTopupBusy(null);
+      }
+    });
+  }
   function seeProof(path: string) {
     c.run(async () => {
       const r = await sb.storage.from('proofs').createSignedUrl(path, 120);
@@ -116,8 +130,8 @@ export default function AdminView({ c }: { c: Ctx }) {
       <div className="admin-tabs" role="tablist" aria-label={t('manage')}>
         <button className={'s' + (view === 'dash' ? ' on' : '')} role="tab" aria-selected={view === 'dash'} onClick={() => setView('dash')}>{t('dash')}</button>
         <button className={'s' + (view === 'manage' ? ' on' : '')} role="tab" aria-selected={view === 'manage'} onClick={() => setView('manage')}>
-          {t('manage')}{aP.length + aW.length + toActivate.length + toReviewPayment.length > 0
-            ? ` (${aP.length + aW.length + toActivate.length + toReviewPayment.length})` : ''}
+          {t('manage')}{aP.length + aW.length + toActivate.length + toReviewPayment.length + walletTopupsReview.length > 0
+            ? ` (${aP.length + aW.length + toActivate.length + toReviewPayment.length + walletTopupsReview.length})` : ''}
         </button>
         <button className={'s' + (view === 'users' ? ' on' : '')} role="tab" aria-selected={view === 'users'} onClick={() => setView('users')}>{t('k_users')}</button>
         <button className={'s' + (view === 'activity' ? ' on' : '')} role="tab" aria-selected={view === 'activity'} onClick={() => setView('activity')}>{t('admin_activity')}</button>
@@ -177,6 +191,24 @@ export default function AdminView({ c }: { c: Ctx }) {
                 <div className="row" key={campaign.id}>
                   <div><b>{campaign.title}</b><div className="m">{f(campaign.budget)} · {campaign.country ?? t('all_c')}</div></div>
                   <button className="s" onClick={() => resolvePaymentReview(campaign.id)}>{t('saspay_review_action')}</button>
+                </div>
+              ))}
+            </section>
+          )}
+
+          {walletTopupsReview.length > 0 && (
+            <section className="card">
+              <h2>{t('saspay_topup_review_queue')}</h2>
+              <p className="note">{t('saspay_topup_review_queue_note')}</p>
+              {walletTopupsReview.map((topup) => (
+                <div className="row" key={topup.id}>
+                  <div>
+                    <b>{f(topup.amount)} {topup.currency}</b>
+                    <div className="m">{topup.country} · {topup.verified_net_amount ?? '—'} {topup.verified_currency || ''} · {topup.provider_transaction_id}</div>
+                  </div>
+                  <button className="s" disabled={topupBusy === topup.id} onClick={() => resolveTopupReview(topup.id)}>
+                    {topupBusy === topup.id ? '…' : t('saspay_topup_review_action')}
+                  </button>
                 </div>
               ))}
             </section>

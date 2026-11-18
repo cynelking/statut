@@ -22,6 +22,9 @@ const KIND_LABELS: Record<Transaction['kind'], string> = {
   promo_credit: 'tx_promo_credit',
   credit_used: 'tx_credit_used',
   credit_refund: 'tx_credit_refund',
+  wallet_topup: 'tx_wallet_topup',
+  wallet_used: 'tx_wallet_used',
+  wallet_refund: 'tx_wallet_refund',
   withdrawal: 'tx_withdrawal',
   proof_status: 'tx_proof_status',
 };

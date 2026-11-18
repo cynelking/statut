@@ -149,6 +149,35 @@ export async function syncSasPayCampaignPayment(paymentId: string, sessionId: st
   return String(result.data);
 }
 
+export async function syncSasPayWalletTopup(topupId: string, sessionId: string) {
+  const admin = getAdminClient();
+  const session = asRecord(await sasPayRequest(
+    `/checkout-sessions/${encodeURIComponent(sessionId)}/status/`,
+  ));
+  if (session.status === 'EXPIRED' || session.status === 'CANCELLED') {
+    const expired = await admin.rpc('expire_saspay_wallet_topup', { p_topup_id: topupId });
+    if (expired.error) throw expired.error;
+    return 'failed';
+  }
+
+  const transactionId = typeof session.transaction_id === 'string' ? session.transaction_id : '';
+  const transactionStatus = typeof session.transaction_status === 'string' ? session.transaction_status : '';
+  if (!transactionId || (transactionStatus !== 'SUCCESS' && transactionStatus !== 'FAILED')) return 'pending';
+
+  const verified = asRecord(await sasPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
+  const status = verified.status === 'SUCCESS' || verified.status === 'FAILED'
+    ? verified.status : transactionStatus;
+  const result = await admin.rpc('complete_saspay_wallet_topup', {
+    p_topup_id: topupId,
+    p_provider_transaction_id: transactionId,
+    p_status: status,
+    p_net_amount: Number(verified.net_amount || 0),
+    p_currency: String(verified.currency || ''),
+  });
+  if (result.error) throw result.error;
+  return String(result.data);
+}
+
 export function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>

@@ -237,6 +237,9 @@ details.faq{border-top:1px solid var(--line);padding:12px 0}.faq summary{font-we
 .landing-auth{scroll-margin-top:24px}
 @media(max-width:620px){.landing{gap:20px}.landing-hero{grid-template-columns:1fr;gap:6px;min-height:auto;padding:26px 22px}.landing-copy h1{max-width:14ch;font-size:clamp(34px,10vw,46px)}.landing-visual{min-height:260px;margin-top:4px}.landing-phone{width:min(78%,245px)}.landing-orbit-one{width:245px}.landing-orbit-two{width:190px}.landing-float-top{right:4%}.landing-float-bottom{left:4%}.landing-roles{grid-template-columns:1fr}.landing-role>p{min-height:0}.landing-final{align-items:stretch;flex-direction:column}.landing-final .landing-primary{width:100%}}
 @media(prefers-reduced-motion:reduce){.landing-phone{transform:none}}
+.logo img{display:block;width:clamp(132px,16vw,190px);height:auto;object-fit:contain}
+@media(max-width:859px){.logo img{width:clamp(108px,28vw,150px)}}
+@media(max-width:390px){header{gap:4px;padding:8px 10px}.logo img{width:clamp(96px,29vw,120px)}header .hr{gap:4px}header .hr .lang{padding:7px 9px;font-size:12px}}
 @media(prefers-reduced-motion:reduce){.has-scroll-motion .scroll-reveal,.has-scroll-motion .scroll-reveal.is-in-view{opacity:1;transform:none;transition:none}.scene-phone,.scene-ad,.scene-coin,.scene-megaphone{transform:none!important;transition:none!important}}
 
 /* Modern StatutPay interface */

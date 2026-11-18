@@ -72,6 +72,62 @@ async function applyCampaignTransaction(
   return false;
 }
 
+async function applyWalletTopupTransaction(
+  admin: ReturnType<typeof getAdminClient>,
+  transactionId: string,
+  eventData: Record<string, unknown>,
+  eventStatus: 'SUCCESS' | 'FAILED',
+) {
+  const amount = Number(eventData.amount);
+  const currency = typeof eventData.currency === 'string' ? eventData.currency : '';
+  if (!Number.isFinite(amount) || !currency) return false;
+
+  const { data: candidates, error } = await admin.from('saspay_wallet_topups')
+    .select('id,amount,currency,country,checkout_session_id')
+    .in('status', ['pending', 'failed'])
+    .not('checkout_session_id', 'is', null)
+    .eq('currency', currency)
+    .eq('amount', amount)
+    .limit(1000);
+  if (error) throw error;
+
+  const eventCountry = typeof eventData.country === 'string' ? eventData.country : '';
+  const likely = (candidates ?? []).filter((candidate) =>
+    !eventCountry || candidate.country === eventCountry,
+  );
+  if (!likely.length) return false;
+
+  for (let offset = 0; offset < likely.length; offset += 5) {
+    const batch = likely.slice(offset, offset + 5);
+    const matches = await Promise.all(batch.map(async (candidate) => {
+      if (!candidate.checkout_session_id) return null;
+      const session = asRecord(await sasPayRequest(
+        `/checkout-sessions/${encodeURIComponent(candidate.checkout_session_id)}/status/`,
+      ));
+      return session.transaction_id === transactionId
+        && session.transaction_status === eventStatus
+        ? candidate
+        : null;
+    }));
+    const match = matches.find((candidate) => candidate !== null);
+    if (!match) continue;
+
+    const verified = asRecord(await sasPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
+    const status = verified.status === 'SUCCESS' || verified.status === 'FAILED'
+      ? verified.status : eventStatus;
+    const result = await admin.rpc('complete_saspay_wallet_topup', {
+      p_topup_id: match.id,
+      p_provider_transaction_id: transactionId,
+      p_status: status,
+      p_net_amount: Number(verified.net_amount || 0),
+      p_currency: String(verified.currency || ''),
+    });
+    if (result.error) throw result.error;
+    return true;
+  }
+  return false;
+}
+
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const signature = request.headers.get('x-webhook-signature') || '';
@@ -112,14 +168,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'payout_not_mapped_yet' }, { status: 503 });
       } else if (status === 'SUCCESS' || status === 'FAILED') {
         const { baseUrl } = getSasPayConfig();
-        const providerStatus = await applyCampaignTransaction(
+        const campaignMatched = await applyCampaignTransaction(
           admin,
           transactionId,
           data,
           status,
         );
-        if (!providerStatus && baseUrl === 'https://sandbox-api.saspay.me/api/v1') {
-          console.info('SasPay sandbox transaction webhook did not match a pending StatutPay campaign', transactionId);
+        const topupMatched = campaignMatched ? false : await applyWalletTopupTransaction(
+          admin,
+          transactionId,
+          data,
+          status,
+        );
+        if (!campaignMatched && !topupMatched && baseUrl === 'https://sandbox-api.saspay.me/api/v1') {
+          console.info('SasPay sandbox transaction webhook did not match a pending StatutPay payment', transactionId);
         }
       }
     }

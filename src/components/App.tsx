@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import Image from 'next/image';
 import type { User } from '@supabase/supabase-js';
 import { configured, sb } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
@@ -20,7 +21,7 @@ import OfflineSync from './OfflineSync';
 import ScrollEffects from './ScrollEffects';
 import LandingView from './LandingView';
 
-const EMPTY: Data = { bal: 0, camps: [], proofs: [], wd: [], aP: [], aW: [], favs: [], myReviews: [], ratings: {} };
+const EMPTY: Data = { bal: 0, walletBalance: 0, camps: [], proofs: [], wd: [], aP: [], aW: [], walletTopupsReview: [], favs: [], myReviews: [], ratings: {} };
 
 export default function App() {
   const { t } = useI18n();
@@ -61,10 +62,12 @@ export default function App() {
   }, []);
 
   const load = useCallback(async (u: User) => {
-    await sb.rpc('expire_campaigns');
-    const [p, bal, c, pr, w, fv, rt, mr] = await Promise.all([
+    const expired = await sb.rpc('expire_campaigns');
+    if (expired.error) throw expired.error;
+    const [p, bal, walletBalance, c, pr, w, fv, rt, mr] = await Promise.all([
       sb.from('profiles').select('*').eq('id', u.id).single(),
       sb.rpc('my_balance'),
+      sb.rpc('my_wallet_balance'),
       sb.from('campaigns').select('*').order('id', { ascending: false }),
       sb.from('proofs').select('*').eq('user_id', u.id),
       sb.from('withdrawals').select('*').eq('user_id', u.id),
@@ -77,19 +80,26 @@ export default function App() {
       if (r.dir === 'pub_to_adv') ratings[r.uid] = { score: Number(r.score), n: r.n };
     }
     const prof = (p.data ?? null) as Profile | null;
+    if (bal.error) throw bal.error;
+    if (walletBalance.error) throw walletBalance.error;
     let aP: Proof[] = [];
     let aW: Withdrawal[] = [];
+    let walletTopupsReview: Data['walletTopupsReview'] = [];
     if (prof?.role === 'admin') {
-      const [a, b] = await Promise.all([
+      const [a, b, topups] = await Promise.all([
         sb.from('proofs').select('*,profiles(phone)').eq('status', 'pending'),
         sb.from('withdrawals').select('*,profiles(phone)').in('status', ['pending', 'processing']),
+        sb.rpc('admin_wallet_topups_for_review'),
       ]);
       aP = (a.data ?? []) as unknown as Proof[];
       aW = (b.data ?? []) as unknown as Withdrawal[];
+      if (topups.error) throw topups.error;
+      walletTopupsReview = (topups.data ?? []) as Data['walletTopupsReview'];
     }
     setProfile(prof);
     setD({
       bal: (bal.data as number | null) ?? 0,
+      walletBalance: (walletBalance.data as number | null) ?? 0,
       camps: (c.data ?? []) as Campaign[],
       proofs: (pr.data ?? []) as Proof[],
       wd: (w.data ?? []) as Withdrawal[],
@@ -98,15 +108,16 @@ export default function App() {
       ratings,
       aP,
       aW,
+      walletTopupsReview,
     });
     if (prof?.role !== 'admin') setTab((x) => (x === 'm' ? 'f' : x));
   }, []);
 
   useEffect(() => {
     if (!user) { setProfile(null); setD(EMPTY); return; }
-    const id = setTimeout(() => { load(user).catch(() => {}); }, 0);
+    const id = setTimeout(() => { load(user).catch((reason: unknown) => say(reason instanceof Error ? reason.message : String(reason))); }, 0);
     return () => clearTimeout(id);
-  }, [user?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, load, say]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reload = useCallback(async () => { if (user) await load(user); }, [user, load]);
 
@@ -114,7 +125,8 @@ export default function App() {
     if (!user || typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     const paymentId = url.searchParams.get('saspay_payment_id');
-    if (!paymentId) return;
+    const topupId = url.searchParams.get('saspay_topup_id');
+    if (!paymentId && !topupId) return;
 
     let active = true;
     void (async () => {
@@ -122,15 +134,24 @@ export default function App() {
       const token = session.data.session?.access_token;
       if (!token) return;
       url.searchParams.delete('saspay_payment_id');
+      url.searchParams.delete('saspay_topup_id');
       window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
 
-      const response = await fetch(`/api/saspay/payment-status?id=${encodeURIComponent(paymentId)}`, {
+      const endpoint = paymentId ? 'payment-status' : 'wallet-topup-status';
+      const id = paymentId || topupId;
+      const response = await fetch(`/api/saspay/${endpoint}?id=${encodeURIComponent(id || '')}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const result = await response.json() as { status?: string; error?: string };
       if (!response.ok) throw new Error(result.error || 'Impossible de vérifier le paiement SasPay');
       await load(user);
       if (!active) return;
+      if (topupId) {
+        say(t(result.status === 'succeeded' ? 'saspay_topup_paid'
+          : result.status === 'review' ? 'saspay_topup_review'
+            : result.status === 'failed' ? 'saspay_topup_failed' : 'saspay_topup_pending'));
+        return;
+      }
       say(t(result.status === 'succeeded' ? 'saspay_return_paid'
         : result.status === 'review' ? 'saspay_return_review'
           : result.status === 'failed' ? 'saspay_return_failed' : 'saspay_return_pending'));
@@ -180,7 +201,7 @@ export default function App() {
   return (
     <>
       <header className="app-header">
-        <div className="logo"><span className="mk">S</span><span>Statut<i>Pay</i></span></div>
+        <div className="logo"><Image src="/brand-logo.png" alt="StatutPay" width={1513} height={405} priority /></div>
         <nav className="desktop-nav" aria-label="Navigation principale">
           {user && !recovery && tabs.map((r) => (
             <button key={r} className={tab === r ? 'on' : ''} aria-current={tab === r ? 'page' : undefined} onClick={() => setTab(r)}>

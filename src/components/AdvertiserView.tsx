@@ -47,6 +47,8 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
   const [rating, setRating] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [payingCampaign, setPayingCampaign] = useState<number | null>(null);
+  const [topupAmount, setTopupAmount] = useState('');
+  const [topupBusy, setTopupBusy] = useState(false);
 
   useEffect(() => {
     if (!mediaFile) { setFilePreview(null); return; }
@@ -59,7 +61,8 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
   const total = b + FEE + (boost ? BOOST_FEE : 0);
   const credit = c.profile.credit;
   const used = useCredit ? Math.min(credit, total) : 0;
-  const due = total - used;
+  const walletUsed = c.d.walletBalance >= total - used ? total - used : 0;
+  const due = total - used - walletUsed;
   const mine = c.d.camps.filter((x) => x.owner === c.user.id);
   const titleOf = (id: number) => c.d.camps.find((x) => x.id === id)?.title ?? '#' + id;
 
@@ -97,6 +100,37 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
     } finally {
       setPayingCampaign(null);
     }
+  }
+
+  function topup() {
+    c.run(async () => {
+      const amount = Number(topupAmount);
+      if (!Number.isSafeInteger(amount) || amount < 500 || amount > 1000000) {
+        throw new Error(t('saspay_topup_limits'));
+      }
+      setTopupBusy(true);
+      try {
+        const token = (await sb.auth.getSession()).data.session?.access_token;
+        if (!token) throw new Error(t('auth_login_hint'));
+        const response = await fetch('/api/saspay/wallet-topup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ amount }),
+        });
+        const result = await response.json() as { checkoutUrl?: string; status?: string; error?: string };
+        if (!response.ok) throw new Error(result.error || 'Impossible de créer la recharge SasPay');
+        if (result.checkoutUrl) {
+          window.location.assign(result.checkoutUrl);
+          return;
+        }
+        await c.reload();
+        c.say(t(result.status === 'succeeded' ? 'saspay_topup_paid'
+          : result.status === 'review' ? 'saspay_topup_review'
+            : result.status === 'failed' ? 'saspay_topup_failed' : 'saspay_topup_pending'));
+      } finally {
+        setTopupBusy(false);
+      }
+    });
   }
 
   function chooseMedia(file: File | null) {
@@ -206,6 +240,18 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         </div>
       </section>
 
+      <form className="card" onSubmit={(e) => { e.preventDefault(); topup(); }}>
+        <h2>{t('wallet_title')} · {f(c.d.walletBalance)}</h2>
+        <p className="m">{t('wallet_description')}</p>
+        <label htmlFor="wallet-topup-amount">{t('wallet_topup_amount')}</label>
+        <input id="wallet-topup-amount" inputMode="numeric" value={topupAmount}
+          onChange={(e) => setTopupAmount(e.target.value.replace(/\D/g, ''))} />
+        <p className="m">{t('saspay_topup_limits')}</p>
+        <button className="p" type="submit" disabled={topupBusy || !topupAmount}>
+          {topupBusy ? '…' : t('wallet_topup_button')}
+        </button>
+      </form>
+
       <form className="card" onSubmit={(e) => { e.preventDefault(); launch(); }}>
         <h1 style={{ fontSize: 24 }}>{t('new')}</h1>
         <label htmlFor="ti">{t('title')}</label>
@@ -261,9 +307,10 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
             <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} /> {t('use_credit')} ({f(credit)})
           </label>
         )}
+        {c.d.walletBalance > 0 && <p className="m">{t('wallet_campaign_note')}</p>}
         <p className="note" style={{ marginTop: 14 }}>
           {t('fee')} : <b>{f(FEE)}</b>{boost && <> · {t('boost_fee')} : <b>{f(BOOST_FEE)}</b></>} · {t('maxv')} : <b>{b.toLocaleString()}</b><br />
-          {t('tot')} : <b>{f(total)}</b>{used > 0 && <> − {t('credit')} <b>{f(used)}</b></>}<br />
+          {t('tot')} : <b>{f(total)}</b>{used > 0 && <> − {t('credit')} <b>{f(used)}</b></>}{walletUsed > 0 && <> − {t('wallet_title')} <b>{f(walletUsed)}</b></>}<br />
           {t('to_pay')} : <b>{f(due)}</b>{ends && <><br /><span className="m">{t('refund_note')}</span></>}
         </p>
         <button className="p" type="submit" disabled={creating}>{t('launch')}</button>
@@ -286,7 +333,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         <h2>{t('myc')}</h2>
         {mine.length === 0 && <p className="m">{t('none')}</p>}
         {mine.map((x, i) => {
-          const owed = x.budget + FEE + (x.boost_hours > 0 ? BOOST_FEE : 0) - x.credit_used;
+          const owed = x.budget + FEE + (x.boost_hours > 0 ? BOOST_FEE : 0) - x.credit_used - (x.wallet_used || 0);
           return (
             <div className={'row' + (i === 0 ? ' first' : '')} style={{ display: 'block' }} key={x.id}>
               <b>{x.title}</b>{' '}

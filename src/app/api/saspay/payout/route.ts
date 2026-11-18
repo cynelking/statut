@@ -12,7 +12,12 @@ function internationalPhone(value: string, country: string) {
   return `+${digits.startsWith(callingCode) ? digits : callingCode + digits}`;
 }
 
+function pendingResponse(withdrawalId: number, error: string) {
+  return NextResponse.json({ withdrawalId, status: 'pending', error }, { status: 202 });
+}
+
 export async function POST(request: NextRequest) {
+  let createdWithdrawalId: number | null = null;
   try {
     const auth = await getRequestUser(request);
     if (!auth) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -23,20 +28,57 @@ export async function POST(request: NextRequest) {
       .select('role')
       .eq('id', auth.user.id)
       .single();
-    if (profileError || profile?.role !== 'admin') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    if (profileError) throw profileError;
+
+    const body = asRecord(await request.json());
+    let withdrawalId = Number(body.withdrawalId);
+    if (!Number.isSafeInteger(withdrawalId) || withdrawalId < 1) {
+      const amount = Number(body.amount);
+      const country = typeof body.country === 'string' ? body.country : '';
+      const network = typeof body.network === 'string' ? body.network : '';
+      const phone = typeof body.phone === 'string' ? body.phone : '';
+      const operator = typeof body.operator === 'string' ? body.operator : '';
+      if (!Number.isSafeInteger(amount) || !country || !network || !phone || !operator) {
+        return NextResponse.json({ error: 'Données de retrait invalides' }, { status: 400 });
+      }
+      const created = await userClient.rpc('request_withdrawal', {
+        p_amount: amount,
+        p_operator: operator,
+        p_country: country,
+        p_network: network,
+        p_phone: phone,
+      });
+      if (created.error) throw created.error;
+      withdrawalId = Number(created.data);
+      if (!Number.isSafeInteger(withdrawalId) || withdrawalId < 1) {
+        throw new Error('La demande de retrait a été enregistrée sans identifiant valide');
+      }
+      createdWithdrawalId = withdrawalId;
+    }
+
+    const admin = getAdminClient();
+    const { data: withdrawal, error: withdrawalError } = await admin.from('withdrawals')
+      .select('user_id')
+      .eq('id', withdrawalId)
+      .maybeSingle();
+    if (withdrawalError) throw withdrawalError;
+    if (!withdrawal) return NextResponse.json({ error: 'Retrait introuvable' }, { status: 404 });
+    if (withdrawal.user_id !== auth.user.id && profile.role !== 'admin') {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    }
 
     const { baseUrl } = getSasPayConfig();
     if (baseUrl !== 'https://api.saspay.me/api/v1') {
+      if (createdWithdrawalId !== null) {
+        return pendingResponse(withdrawalId, 'Les payouts ne sont pas disponibles en sandbox; configurez l’API SasPay de production.');
+      }
       return NextResponse.json({ error: 'Les payouts ne sont pas disponibles en sandbox; configurez l’API SasPay de production.' }, { status: 409 });
     }
     if (process.env.SASPAY_PAYOUTS_ENABLED !== 'true') {
+      if (createdWithdrawalId !== null) {
+        return pendingResponse(withdrawalId, 'Les payouts SasPay sont désactivés. Activez-les uniquement après avoir autorisé l’IP fixe du serveur dans SasPay.');
+      }
       return NextResponse.json({ error: 'Les payouts SasPay sont désactivés. Activez-les uniquement après avoir autorisé l’IP fixe du serveur dans SasPay.' }, { status: 503 });
-    }
-
-    const body = asRecord(await request.json());
-    const withdrawalId = Number(body.withdrawalId);
-    if (!Number.isSafeInteger(withdrawalId) || withdrawalId < 1) {
-      return NextResponse.json({ error: 'withdrawalId invalide' }, { status: 400 });
     }
 
     const networks = await listSasPayNetworks();
@@ -53,7 +95,10 @@ export async function POST(request: NextRequest) {
         .eq('id', withdrawalId)
         .eq('status', 'processing')
         .is('saspay_payout_id', null);
-      return NextResponse.json({ error: 'Le réseau de paiement n’est plus disponible. Demandez au diffuseur de refaire sa demande.' }, { status: 409 });
+      const message = 'Le réseau de paiement n’est plus disponible. Demandez au diffuseur de refaire sa demande.';
+      return createdWithdrawalId !== null
+        ? pendingResponse(withdrawalId, message)
+        : NextResponse.json({ error: message }, { status: 409 });
     }
     const callingCode = COUNTRY_CALLING_CODES[country];
     if (!callingCode || !recipientPhone) {
@@ -65,7 +110,6 @@ export async function POST(request: NextRequest) {
       throw new Error('Pays ou numéro Mobile Money manquant');
     }
 
-    const admin = getAdminClient();
     if (payout.provider_payout_id) {
       const verified = asRecord(await sasPayRequest(`/payouts/${encodeURIComponent(String(payout.provider_payout_id))}/verify/`));
       const status = typeof verified.status === 'string' ? verified.status : '';
@@ -141,6 +185,7 @@ export async function POST(request: NextRequest) {
   } catch (reason) {
     const result = errorResponse(reason);
     console.error('SasPay payout request failed', result.status, result.error);
+    if (createdWithdrawalId !== null) return pendingResponse(createdWithdrawalId, result.error);
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 }
