@@ -1,10 +1,10 @@
 import { createClient, type User } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
-import type { SasPayCountry, SasPayNetwork } from '@/lib/saspay';
+import type { AlphaPayCountry, AlphaPayNetwork } from '@/lib/alphapay';
 
 const API_BASES = [
-  'https://sandbox-api.saspay.me/api/v1',
-  'https://api.saspay.me/api/v1',
+  'https://sandbox-api.alphapay.me/api/v1',
+  'https://api.alphapay.me/api/v1',
 ];
 
 export function getAdminClient() {
@@ -39,16 +39,16 @@ export function getUserClient(token: string) {
   });
 }
 
-export function getSasPayConfig() {
-  const baseUrl = (process.env.SASPAY_API_BASE_URL || API_BASES[0]).replace(/\/+$/, '');
-  const apiKey = process.env.SASPAY_API_KEY;
-  if (!API_BASES.includes(baseUrl)) throw new Error('SASPAY_API_BASE_URL is not an allowed SasPay API URL');
-  if (!apiKey) throw new Error('SASPAY_API_KEY is not configured');
+export function getAlphaPayConfig() {
+  const baseUrl = (process.env.ALPHAPAY_API_BASE_URL || API_BASES[0]).replace(/\/+$/, '');
+  const apiKey = process.env.ALPHAPAY_API_KEY;
+  if (!API_BASES.includes(baseUrl)) throw new Error('ALPHAPAY_API_BASE_URL is not an allowed AlphaPay API URL');
+  if (!apiKey) throw new Error('ALPHAPAY_API_KEY is not configured');
   return { baseUrl, apiKey };
 }
 
-export async function sasPayRequest(path: string, init: RequestInit = {}) {
-  const { baseUrl, apiKey } = getSasPayConfig();
+export async function alphaPayRequest(path: string, init: RequestInit = {}) {
+  const { baseUrl, apiKey } = getAlphaPayConfig();
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
@@ -64,7 +64,7 @@ export async function sasPayRequest(path: string, init: RequestInit = {}) {
   try {
     payload = await response.json();
   } catch {
-    throw new Error(`SasPay returned an invalid response (HTTP ${response.status})`);
+    throw new Error(`AlphaPay returned an invalid response (HTTP ${response.status})`);
   }
 
   if (!response.ok) {
@@ -72,7 +72,7 @@ export async function sasPayRequest(path: string, init: RequestInit = {}) {
     const details = asRecord(body.error);
     const message = typeof details.message === 'string'
       ? details.message
-      : typeof body.message === 'string' ? body.message : `SasPay request failed (HTTP ${response.status})`;
+      : typeof body.message === 'string' ? body.message : `AlphaPay request failed (HTTP ${response.status})`;
     const error = new Error(message) as Error & { status: number; code?: string };
     error.status = response.status;
     error.code = typeof details.code === 'string'
@@ -81,24 +81,24 @@ export async function sasPayRequest(path: string, init: RequestInit = {}) {
     throw error;
   }
 
-  return unwrapSasPayData(payload);
+  return unwrapAlphaPayData(payload);
 }
 
-export async function listSasPayNetworks() {
-  const countryResult = await sasPayRequest('/countries/');
-  if (!Array.isArray(countryResult)) throw new Error('SasPay countries response is invalid');
-  const countries = (countryResult as (SasPayCountry & { id: string })[])
+export async function listAlphaPayNetworks() {
+  const countryResult = await alphaPayRequest('/countries/');
+  if (!Array.isArray(countryResult)) throw new Error('AlphaPay countries response is invalid');
+  const countries = (countryResult as (AlphaPayCountry & { id: string })[])
     .filter((country) => country && typeof country.iso_code === 'string')
     .map(({ iso_code, name, default_currency }) => ({ iso_code, name, default_currency }));
   const idsToCodes = new Map(
-    (countryResult as (SasPayCountry & { id: string })[])
+    (countryResult as (AlphaPayCountry & { id: string })[])
       .filter((country) => country && typeof country.id === 'string')
       .map((country) => [country.id, country.iso_code]),
   );
-  const networks: SasPayNetwork[] = [];
+  const networks: AlphaPayNetwork[] = [];
 
   for (let page = 1; page <= 20; page++) {
-    const result = asRecord(await sasPayRequest(`/networks/?page=${page}&page_size=100`));
+    const result = asRecord(await alphaPayRequest(`/networks/?page=${page}&page_size=100`));
     const entries = Array.isArray(result.results) ? result.results : [];
     for (const raw of entries) {
       const network = asRecord(raw);
@@ -120,9 +120,9 @@ export async function listSasPayNetworks() {
   return { countries, networks };
 }
 
-export async function syncSasPayCampaignPayment(paymentId: string, sessionId: string) {
+export async function syncAlphaPayCampaignPayment(paymentId: string, sessionId: string) {
   const admin = getAdminClient();
-  const session = asRecord(await sasPayRequest(
+  const session = asRecord(await alphaPayRequest(
     `/checkout-sessions/${encodeURIComponent(sessionId)}/status/`,
   ));
   if (session.status === 'EXPIRED' || session.status === 'CANCELLED') {
@@ -135,7 +135,7 @@ export async function syncSasPayCampaignPayment(paymentId: string, sessionId: st
   const transactionStatus = typeof session.transaction_status === 'string' ? session.transaction_status : '';
   if (!transactionId || (transactionStatus !== 'SUCCESS' && transactionStatus !== 'FAILED')) return 'pending';
 
-  const verified = asRecord(await sasPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
+  const verified = asRecord(await alphaPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
   const status = verified.status === 'SUCCESS' || verified.status === 'FAILED'
     ? verified.status : transactionStatus;
   const result = await admin.rpc('complete_saspay_campaign_payment', {
@@ -149,9 +149,9 @@ export async function syncSasPayCampaignPayment(paymentId: string, sessionId: st
   return String(result.data);
 }
 
-export async function syncSasPayWalletTopup(topupId: string, sessionId: string) {
+export async function syncAlphaPayWalletTopup(topupId: string, sessionId: string) {
   const admin = getAdminClient();
-  const session = asRecord(await sasPayRequest(
+  const session = asRecord(await alphaPayRequest(
     `/checkout-sessions/${encodeURIComponent(sessionId)}/status/`,
   ));
   if (session.status === 'EXPIRED' || session.status === 'CANCELLED') {
@@ -164,7 +164,7 @@ export async function syncSasPayWalletTopup(topupId: string, sessionId: string) 
   const transactionStatus = typeof session.transaction_status === 'string' ? session.transaction_status : '';
   if (!transactionId || (transactionStatus !== 'SUCCESS' && transactionStatus !== 'FAILED')) return 'pending';
 
-  const verified = asRecord(await sasPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
+  const verified = asRecord(await alphaPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
   const status = verified.status === 'SUCCESS' || verified.status === 'FAILED'
     ? verified.status : transactionStatus;
   const result = await admin.rpc('complete_saspay_wallet_topup', {
@@ -184,7 +184,7 @@ export function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-export function unwrapSasPayData(payload: unknown): unknown {
+export function unwrapAlphaPayData(payload: unknown): unknown {
   const record = asRecord(payload);
   return record.data === undefined ? payload : record.data;
 }

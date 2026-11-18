@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import { useI18n } from '@/lib/i18n';
 import { Icon } from './ui';
 
@@ -22,29 +23,36 @@ export default function LandingView() {
           </div>
         </div>
 
-        <div className="landing-visual" aria-hidden="true">
-          <div className="landing-orbit landing-orbit-one" />
-          <div className="landing-orbit landing-orbit-two" />
-          <div className="landing-phone">
-            <div className="landing-phone-top"><span /><b>StatutPay</b><i>•••</i></div>
-            <div className="landing-balance">
-              <span>{t('bal')}</span>
-              <b>1 250 F</b>
-              <i>+120 F</i>
-            </div>
-            <div className="landing-activity">
-              <span className="ic"><Icon n="a" /></span>
-              <span><b>{t('landing_campaign')}</b><small>{t('st_active')}</small></span>
-              <Icon n="share" />
-            </div>
-            <div className="landing-activity landing-activity-muted">
-              <span className="ic"><Icon n="d" /></span>
-              <span><b>{t('landing_view_approved')}</b><small>{t('views')}</small></span>
-              <strong>+1 F</strong>
-            </div>
-          </div>
-          <span className="landing-float landing-float-top">+1 F</span>
-          <span className="landing-float landing-float-bottom"><i /> {t('st_active')}</span>
+        <div className="landing-visual">
+          <Image
+            src="/statutpay-gains.png"
+            alt={t('landing_image_alt')}
+            fill
+            priority
+            sizes="(max-width: 620px) 100vw, 40vw"
+          />
+        </div>
+      </section>
+
+      <section className="landing-benefits" aria-labelledby="landing-benefits-title">
+        <div className="landing-benefits-copy">
+          <span className="landing-eyebrow landing-eyebrow-blue">{t('landing_benefits_eyebrow')}</span>
+          <h2 id="landing-benefits-title">{t('landing_benefits_title')}</h2>
+          <p>{t('landing_benefits_intro')}</p>
+          <ul className="landing-benefits-list">
+            <li>{t('landing_benefits_item1')}</li>
+            <li>{t('landing_benefits_item2')}</li>
+            <li>{t('landing_benefits_item3')}</li>
+          </ul>
+          <a className="landing-benefits-cta" href="#auth">{t('landing_benefits_cta')}</a>
+        </div>
+        <div className="landing-benefits-visual">
+          <Image
+            src="/statutpay-annonceurs.png"
+            alt={t('landing_benefits_image_alt')}
+            fill
+            sizes="(max-width: 620px) 100vw, 55vw"
+          />
         </div>
       </section>
 

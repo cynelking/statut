@@ -8,13 +8,13 @@ import ReferralCard from './ReferralCard';
 import LevelCard from './LevelCard';
 import RateForm from './RateForm';
 import { isNet, queueProof } from '@/lib/offline';
-import { COUNTRY_CODES, type SasPayCountry, type SasPayNetwork } from '@/lib/saspay';
+import { COUNTRY_CODES, type AlphaPayCountry, type AlphaPayNetwork } from '@/lib/alphapay';
 
 export default function PublisherView({ c }: { c: Ctx }) {
   const { t, f } = useI18n();
   const [file, setFile] = useState<File | null>(null);
-  const [payCountries, setPayCountries] = useState<SasPayCountry[]>([]);
-  const [payNetworks, setPayNetworks] = useState<SasPayNetwork[]>([]);
+  const [payCountries, setPayCountries] = useState<AlphaPayCountry[]>([]);
+  const [payNetworks, setPayNetworks] = useState<AlphaPayNetwork[]>([]);
   const [withdrawCountry, setWithdrawCountry] = useState(COUNTRY_CODES[c.profile.country || ''] || '');
   const [withdrawNetwork, setWithdrawNetwork] = useState('');
   const [recipientPhone, setRecipientPhone] = useState(c.profile.phone);
@@ -43,11 +43,11 @@ export default function PublisherView({ c }: { c: Ctx }) {
       const session = await sb.auth.getSession();
       const token = session.data.session?.access_token;
       if (!token) throw new Error('Connectez-vous pour charger les réseaux de retrait');
-      const response = await fetch('/api/saspay/networks', {
+      const response = await fetch('/api/alphapay/networks', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const result = await response.json() as { countries?: SasPayCountry[]; networks?: SasPayNetwork[]; error?: string };
-      if (!response.ok) throw new Error(result.error || 'Impossible de charger les réseaux SasPay');
+      const result = await response.json() as { countries?: AlphaPayCountry[]; networks?: AlphaPayNetwork[]; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Impossible de charger les réseaux AlphaPay');
       if (!active) return;
       const countries = result.countries ?? [];
       const networks = result.networks ?? [];
@@ -96,7 +96,7 @@ export default function PublisherView({ c }: { c: Ctx }) {
         if (!token) throw new Error(t('auth_login_hint'));
         let response: Response;
         try {
-          response = await fetch('/api/saspay/payout', {
+          response = await fetch('/api/alphapay/payout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({
@@ -112,7 +112,7 @@ export default function PublisherView({ c }: { c: Ctx }) {
           throw new Error(`${t('wd_check_status')} ${reason instanceof Error ? reason.message : String(reason)}`);
         }
         const result = await response.json() as { status?: string; error?: string };
-        if (!response.ok) throw new Error(result.error || 'Impossible de traiter le retrait SasPay');
+        if (!response.ok) throw new Error(result.error || 'Impossible de traiter le retrait AlphaPay');
         await c.reload();
         if (result.status === 'pending' && result.error) {
           c.say(`${t('wd_saved_pending')} ${result.error}`);

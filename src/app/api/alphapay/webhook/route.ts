@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { asRecord, getAdminClient, getSasPayConfig, sasPayRequest } from '@/lib/saspay-server';
+import { alphaPayRequest, asRecord, getAdminClient, getAlphaPayConfig } from '@/lib/alphapay-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,7 +44,7 @@ async function applyCampaignTransaction(
     const batch = likely.slice(offset, offset + 5);
     const matches = await Promise.all(batch.map(async (candidate) => {
       if (!candidate.checkout_session_id) return null;
-      const session = asRecord(await sasPayRequest(
+      const session = asRecord(await alphaPayRequest(
         `/checkout-sessions/${encodeURIComponent(candidate.checkout_session_id)}/status/`,
       ));
       return session.transaction_id === transactionId
@@ -55,7 +55,7 @@ async function applyCampaignTransaction(
     const match = matches.find((candidate) => candidate !== null);
     if (!match) continue;
 
-    const verified = asRecord(await sasPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
+    const verified = asRecord(await alphaPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
     const status = verified.status === 'SUCCESS' || verified.status === 'FAILED'
       ? verified.status
       : eventStatus;
@@ -101,7 +101,7 @@ async function applyWalletTopupTransaction(
     const batch = likely.slice(offset, offset + 5);
     const matches = await Promise.all(batch.map(async (candidate) => {
       if (!candidate.checkout_session_id) return null;
-      const session = asRecord(await sasPayRequest(
+      const session = asRecord(await alphaPayRequest(
         `/checkout-sessions/${encodeURIComponent(candidate.checkout_session_id)}/status/`,
       ));
       return session.transaction_id === transactionId
@@ -112,7 +112,7 @@ async function applyWalletTopupTransaction(
     const match = matches.find((candidate) => candidate !== null);
     if (!match) continue;
 
-    const verified = asRecord(await sasPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
+    const verified = asRecord(await alphaPayRequest(`/payments/${encodeURIComponent(transactionId)}/verify/`));
     const status = verified.status === 'SUCCESS' || verified.status === 'FAILED'
       ? verified.status : eventStatus;
     const result = await admin.rpc('complete_saspay_wallet_topup', {
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
   const signature = request.headers.get('x-webhook-signature') || '';
   const timestamp = request.headers.get('x-webhook-timestamp') || '';
   const eventHeader = request.headers.get('x-webhook-event') || '';
-  const secret = process.env.SASPAY_WEBHOOK_SECRET;
+  const secret = process.env.ALPHAPAY_WEBHOOK_SECRET;
   if (!secret) return NextResponse.json({ error: 'webhook_not_configured' }, { status: 503 });
   if (!validSignature(rawBody, signature, timestamp, secret)) {
     return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
@@ -164,10 +164,10 @@ export async function POST(request: NextRequest) {
           if (result.error) throw result.error;
         }
       } else if (data.flow_direction === 'OUTBOUND' || data.type === 'RETRAIT') {
-        console.warn('SasPay payout webhook received before its withdrawal reference was saved', transactionId);
+        console.warn('AlphaPay payout webhook received before its withdrawal reference was saved', transactionId);
         return NextResponse.json({ error: 'payout_not_mapped_yet' }, { status: 503 });
       } else if (status === 'SUCCESS' || status === 'FAILED') {
-        const { baseUrl } = getSasPayConfig();
+        const { baseUrl } = getAlphaPayConfig();
         const campaignMatched = await applyCampaignTransaction(
           admin,
           transactionId,
@@ -180,8 +180,8 @@ export async function POST(request: NextRequest) {
           data,
           status,
         );
-        if (!campaignMatched && !topupMatched && baseUrl === 'https://sandbox-api.saspay.me/api/v1') {
-          console.info('SasPay sandbox transaction webhook did not match a pending StatutPay payment', transactionId);
+        if (!campaignMatched && !topupMatched && baseUrl === 'https://sandbox-api.alphapay.me/api/v1') {
+          console.info('AlphaPay sandbox transaction webhook did not match a pending StatutPay payment', transactionId);
         }
       }
     }
@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (reason) {
     const message = reason instanceof Error ? reason.message : String(reason);
-    console.error('SasPay webhook processing failed', message);
+    console.error('AlphaPay webhook processing failed', message);
     return NextResponse.json({ error: 'webhook_processing_failed' }, { status: 500 });
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { errorResponse, getAdminClient, getRequestUser, syncSasPayWalletTopup } from '@/lib/saspay-server';
+import { errorResponse, getAdminClient, getRequestUser, syncAlphaPayWalletTopup } from '@/lib/alphapay-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,11 +20,11 @@ export async function GET(request: NextRequest) {
     if (topup.status !== 'pending') return NextResponse.json({ status: topup.status });
     if (!topup.checkout_session_id) return NextResponse.json({ status: 'pending' });
 
-    const status = await syncSasPayWalletTopup(topup.id, topup.checkout_session_id);
+    const status = await syncAlphaPayWalletTopup(topup.id, topup.checkout_session_id);
     return NextResponse.json({ status });
   } catch (reason) {
     const result = errorResponse(reason);
-    console.error('SasPay wallet top-up status check failed', result.status, result.error);
+    console.error('AlphaPay wallet top-up status check failed', result.status, result.error);
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 }

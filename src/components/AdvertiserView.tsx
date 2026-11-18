@@ -66,19 +66,19 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
   const mine = c.d.camps.filter((x) => x.owner === c.user.id);
   const titleOf = (id: number) => c.d.camps.find((x) => x.id === id)?.title ?? '#' + id;
 
-  async function createSasPayCheckout(campaignId: number) {
+  async function createAlphaPayCheckout(campaignId: number) {
     setPayingCampaign(campaignId);
     try {
       const session = await sb.auth.getSession();
       const token = session.data.session?.access_token;
       if (!token) throw new Error(t('auth_login_hint'));
-      const response = await fetch('/api/saspay/checkout', {
+      const response = await fetch('/api/alphapay/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ campaignId }),
       });
       const result = await response.json() as { checkoutUrl?: string; status?: string; error?: string };
-      if (!response.ok) throw new Error(result.error || 'Impossible de créer le paiement SasPay');
+      if (!response.ok) throw new Error(result.error || 'Impossible de créer le paiement AlphaPay');
       if (result.checkoutUrl) {
         window.location.assign(result.checkoutUrl);
         return;
@@ -96,7 +96,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         c.say(t('saspay_return_failed'));
         return;
       }
-      throw new Error('La session de paiement SasPay est indisponible');
+      throw new Error('La session de paiement AlphaPay est indisponible');
     } finally {
       setPayingCampaign(null);
     }
@@ -112,13 +112,13 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
       try {
         const token = (await sb.auth.getSession()).data.session?.access_token;
         if (!token) throw new Error(t('auth_login_hint'));
-        const response = await fetch('/api/saspay/wallet-topup', {
+        const response = await fetch('/api/alphapay/wallet-topup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ amount }),
         });
         const result = await response.json() as { checkoutUrl?: string; status?: string; error?: string };
-        if (!response.ok) throw new Error(result.error || 'Impossible de créer la recharge SasPay');
+        if (!response.ok) throw new Error(result.error || 'Impossible de créer la recharge AlphaPay');
         if (result.checkoutUrl) {
           window.location.assign(result.checkoutUrl);
           return;
@@ -203,7 +203,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         if (!Number.isSafeInteger(campaignId) || campaignId < 1) throw new Error('La campagne a été créée sans identifiant valide');
         setTitle(''); setBudget(''); setContent(''); setMediaFile(null); setMediaLink(''); setMediaInputKey((key) => key + 1); setBoost(false); setStarts(''); setEnds('');
         await c.reload();
-        if (due > 0) await createSasPayCheckout(campaignId);
+        if (due > 0) await createAlphaPayCheckout(campaignId);
         else c.say(t('created'));
       } finally {
         setCreating(false);
@@ -340,14 +340,14 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
               <span className={'tag ' + (x.status === 'active' ? 'ok' : x.status === 'pending' ? 'w' : '')}>{t('st_' + x.status)}</span>{' '}
               {x.boost_hours > 0 && <span className="tag boost">{t('sponsored')}</span>}
               <div className="m">{f(x.spent)} / {f(x.budget)} {t('spent')} · {x.country ?? t('all_c')}{x.starts_at ? ' · ' + t('starts_on') + ' ' + x.starts_at.slice(0, 10) : ''}{x.ends_at ? ' · ' + t('ends_in') + ' ' + new Date(Date.parse(x.ends_at) - 1).toISOString().slice(0, 10) : ''}</div>
-              {x.status === 'pending' && x.payment_provider !== 'saspay' ? (
+              {x.status === 'pending' && x.payment_provider !== 'alphapay' ? (
                 <p className="note" style={{ marginTop: 8 }}>{t('payinfo')} <b>{ADMIN}</b> : <b>{f(owed)}</b> {t('payinfo2')}</p>
               ) : x.status === 'pending' && x.payment_status === 'review' ? (
                 <p className="note" role="status">{t('saspay_return_review')}</p>
-              ) : x.status === 'pending' && x.payment_provider === 'saspay' ? (
+              ) : x.status === 'pending' && x.payment_provider === 'alphapay' ? (
                 <div>
                   <p className="note" style={{ marginTop: 8 }}>{t(x.payment_status === 'failed' ? 'saspay_return_failed' : 'saspay_return_pending')}</p>
-                  <button className="p" disabled={payingCampaign === x.id} onClick={() => c.run(() => createSasPayCheckout(x.id))}>
+                  <button className="p" disabled={payingCampaign === x.id} onClick={() => c.run(() => createAlphaPayCheckout(x.id))}>
                     {payingCampaign === x.id ? '…' : t('saspay_pay_campaign')}
                   </button>
                 </div>

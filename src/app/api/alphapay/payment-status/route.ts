@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { errorResponse, getAdminClient, getRequestUser, syncSasPayCampaignPayment } from '@/lib/saspay-server';
+import { errorResponse, getAdminClient, getRequestUser, syncAlphaPayCampaignPayment } from '@/lib/alphapay-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,11 +20,11 @@ export async function GET(request: NextRequest) {
     if (payment.status !== 'pending') return NextResponse.json({ status: payment.status });
     if (!payment.checkout_session_id) return NextResponse.json({ status: 'pending' });
 
-    const status = await syncSasPayCampaignPayment(payment.id, payment.checkout_session_id);
+    const status = await syncAlphaPayCampaignPayment(payment.id, payment.checkout_session_id);
     return NextResponse.json({ status });
   } catch (reason) {
     const result = errorResponse(reason);
-    console.error('SasPay payment status check failed', result.status, result.error);
+    console.error('AlphaPay payment status check failed', result.status, result.error);
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 }

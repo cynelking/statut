@@ -1,5 +1,7 @@
--- Wallet top-ups and automatic SasPay payouts.
+-- Wallet top-ups and automatic AlphaPay payouts.
 -- Apply after migration_v13.sql.
+-- Historical saspay_* table and RPC names are retained for database compatibility.
+-- The saspay provider value remains allowed for existing campaign records only.
 
 create table if not exists public.wallet_accounts (
   user_id uuid primary key references public.profiles(id) on delete cascade,
@@ -62,7 +64,33 @@ alter table public.campaigns
 alter table public.campaigns
   drop constraint if exists campaigns_payment_provider_check,
   add constraint campaigns_payment_provider_check
-    check (payment_provider is null or payment_provider in ('saspay', 'wallet'));
+    check (payment_provider is null or payment_provider in ('alphapay', 'saspay', 'wallet'));
+
+create or replace function public.activate_campaign(p_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then raise exception 'forbidden'; end if;
+  if exists (
+    select 1 from public.campaigns
+    where id = p_id
+      and payment_provider in ('alphapay', 'saspay')
+      and payment_status is distinct from 'paid'
+  ) then raise exception 'Le paiement doit être confirmé avant activation'; end if;
+
+  update public.campaigns
+  set status = 'active',
+      boost_until = case when boost_hours > 0 then now() + make_interval(hours => boost_hours) end
+  where id = p_id and status = 'pending';
+  if not found then raise exception 'Campagne introuvable ou déjà traitée'; end if;
+end
+$$;
+
+revoke all on function public.activate_campaign(bigint) from public;
+grant execute on function public.activate_campaign(bigint) to authenticated;
 
 create or replace function public.my_wallet_balance()
 returns integer
@@ -219,12 +247,12 @@ begin
     when 'Guinée équatoriale' then 'GQ'
     else null
   end;
-  if v_iso is null then raise exception 'Pays du profil non pris en charge par SasPay'; end if;
+  if v_iso is null then raise exception 'Pays du profil non pris en charge par AlphaPay'; end if;
   v_currency := case when v_iso in ('CM', 'GA', 'TD', 'CG', 'CF', 'GQ') then 'XAF' else 'XOF' end;
   v_amount := c.budget + 500
     + case when c.boost_hours > 0 then 1000 else 0 end
     - c.credit_used - c.wallet_used;
-  if v_amount <= 0 then raise exception 'Aucun paiement SasPay n’est nécessaire'; end if;
+  if v_amount <= 0 then raise exception 'Aucun paiement AlphaPay n’est nécessaire'; end if;
 
   select * into payment
   from public.saspay_campaign_payments
@@ -243,7 +271,7 @@ begin
   end if;
 
   update public.campaigns
-  set payment_provider = 'saspay',
+  set payment_provider = 'alphapay',
       payment_status = payment.status
   where id = c.id;
 
@@ -297,7 +325,7 @@ begin
     when 'Guinée équatoriale' then 'GQ'
     else null
   end;
-  if v_iso is null then raise exception 'Pays du profil non pris en charge par SasPay'; end if;
+  if v_iso is null then raise exception 'Pays du profil non pris en charge par AlphaPay'; end if;
   v_currency := case when v_iso in ('CM', 'GA', 'TD', 'CG', 'CF', 'GQ') then 'XAF' else 'XOF' end;
 
   select * into topup
@@ -518,7 +546,7 @@ begin
   where id = p_topup_id and status = 'review'
   for update;
   if not found or topup.provider_transaction_id is null then
-    raise exception 'Aucune recharge SasPay à vérifier';
+    raise exception 'Aucune recharge AlphaPay à vérifier';
   end if;
   if topup.verified_currency is distinct from topup.currency or topup.verified_net_amount is null then
     raise exception 'La devise reçue ne correspond pas à la recharge';
@@ -905,7 +933,7 @@ as $$
         else 'wallet_refund'
       end,
       case l.kind
-        when 'topup' then 'SasPay'
+        when 'topup' then 'AlphaPay'
         when 'campaign_spend' then coalesce(c.title, 'Campaign #' || l.campaign_id::text)
         else coalesce(c.title, 'Campaign #' || l.campaign_id::text)
       end,

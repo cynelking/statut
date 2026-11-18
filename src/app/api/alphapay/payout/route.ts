@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { asRecord, errorResponse, getAdminClient, getRequestUser, getSasPayConfig, getUserClient, listSasPayNetworks, sasPayRequest } from '@/lib/saspay-server';
-import { COUNTRY_CALLING_CODES, currencyForCountry } from '@/lib/saspay';
+import { alphaPayRequest, asRecord, errorResponse, getAdminClient, getAlphaPayConfig, getRequestUser, getUserClient, listAlphaPayNetworks } from '@/lib/alphapay-server';
+import { COUNTRY_CALLING_CODES, currencyForCountry } from '@/lib/alphapay';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -67,21 +67,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     }
 
-    const { baseUrl } = getSasPayConfig();
-    if (baseUrl !== 'https://api.saspay.me/api/v1') {
+    const { baseUrl } = getAlphaPayConfig();
+    if (baseUrl !== 'https://api.alphapay.me/api/v1') {
       if (createdWithdrawalId !== null) {
-        return pendingResponse(withdrawalId, 'Les payouts ne sont pas disponibles en sandbox; configurez l’API SasPay de production.');
+        return pendingResponse(withdrawalId, 'Les payouts AlphaPay ne sont pas disponibles en sandbox; configurez l’API de production.');
       }
-      return NextResponse.json({ error: 'Les payouts ne sont pas disponibles en sandbox; configurez l’API SasPay de production.' }, { status: 409 });
+      return NextResponse.json({ error: 'Les payouts AlphaPay ne sont pas disponibles en sandbox; configurez l’API de production.' }, { status: 409 });
     }
-    if (process.env.SASPAY_PAYOUTS_ENABLED !== 'true') {
+    if (process.env.ALPHAPAY_PAYOUTS_ENABLED !== 'true') {
       if (createdWithdrawalId !== null) {
-        return pendingResponse(withdrawalId, 'Les payouts SasPay sont désactivés. Activez-les uniquement après avoir autorisé l’IP fixe du serveur dans SasPay.');
+        return pendingResponse(withdrawalId, 'Les payouts AlphaPay sont désactivés. Activez-les après avoir autorisé l’IP fixe du serveur dans AlphaPay.');
       }
-      return NextResponse.json({ error: 'Les payouts SasPay sont désactivés. Activez-les uniquement après avoir autorisé l’IP fixe du serveur dans SasPay.' }, { status: 503 });
+      return NextResponse.json({ error: 'Les payouts AlphaPay sont désactivés. Activez-les après avoir autorisé l’IP fixe du serveur dans AlphaPay.' }, { status: 503 });
     }
 
-    const networks = await listSasPayNetworks();
+    const networks = await listAlphaPayNetworks();
     const claimed = await userClient.rpc('claim_saspay_payout', { p_withdrawal_id: withdrawalId });
     if (claimed.error) throw claimed.error;
     const payout = asRecord(claimed.data);
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (payout.provider_payout_id) {
-      const verified = asRecord(await sasPayRequest(`/payouts/${encodeURIComponent(String(payout.provider_payout_id))}/verify/`));
+      const verified = asRecord(await alphaPayRequest(`/payouts/${encodeURIComponent(String(payout.provider_payout_id))}/verify/`));
       const status = typeof verified.status === 'string' ? verified.status : '';
       if (status === 'SUCCESS' || status === 'FAILED' || status === 'PENDING') {
         const result = await admin.rpc('complete_saspay_payout', {
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
 
     let providerResult: Record<string, unknown>;
     try {
-      providerResult = asRecord(await sasPayRequest('/payouts/initialize/', {
+      providerResult = asRecord(await alphaPayRequest('/payouts/initialize/', {
         method: 'POST',
         headers: { 'Idempotency-Key': String(payout.idempotency_key) },
         body: JSON.stringify({
@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
     }
 
     const providerPayoutId = typeof providerResult.id === 'string' ? providerResult.id : '';
-    if (!providerPayoutId) throw new Error('SasPay n’a pas renvoyé la référence du payout');
+    if (!providerPayoutId) throw new Error('AlphaPay n’a pas renvoyé la référence du payout');
     const saved = await admin.from('withdrawals')
       .update({ saspay_payout_id: providerPayoutId })
       .eq('id', withdrawalId)
@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: 'processing' });
   } catch (reason) {
     const result = errorResponse(reason);
-    console.error('SasPay payout request failed', result.status, result.error);
+    console.error('AlphaPay payout request failed', result.status, result.error);
     if (createdWithdrawalId !== null) return pendingResponse(createdWithdrawalId, result.error);
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

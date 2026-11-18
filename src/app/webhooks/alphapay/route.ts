@@ -1,9 +1,9 @@
 import type { NextRequest } from 'next/server';
-import { POST as handleSasPayWebhook } from '../../api/saspay/webhook/route';
+import { POST as handleAlphaPayWebhook } from '../../api/alphapay/webhook/route';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  return handleSasPayWebhook(request);
+  return handleAlphaPayWebhook(request);
 }

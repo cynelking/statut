@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { asRecord, errorResponse, getAdminClient, getRequestUser, getSasPayConfig, getUserClient, sasPayRequest, syncSasPayWalletTopup } from '@/lib/saspay-server';
+import { alphaPayRequest, asRecord, errorResponse, getAdminClient, getAlphaPayConfig, getRequestUser, getUserClient, syncAlphaPayWalletTopup } from '@/lib/alphapay-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,15 +25,15 @@ export async function POST(request: NextRequest) {
     if (intent.status === 'review') return NextResponse.json({ status: 'review' });
 
     if (typeof intent.checkout_session_id === 'string' && intent.checkout_session_id) {
-      getSasPayConfig();
-      const status = await syncSasPayWalletTopup(topupId, intent.checkout_session_id);
+      getAlphaPayConfig();
+      const status = await syncAlphaPayWalletTopup(topupId, intent.checkout_session_id);
       if (status !== 'pending') return NextResponse.json({ status });
     }
     if (typeof intent.checkout_url === 'string' && intent.checkout_url) {
       return NextResponse.json({ checkoutUrl: intent.checkout_url, status: 'pending' });
     }
 
-    getSasPayConfig();
+    getAlphaPayConfig();
     const appBaseUrl = process.env.APP_BASE_URL?.replace(/\/+$/, '');
     if (!appBaseUrl) throw new Error('APP_BASE_URL doit être configurée côté serveur');
     const { data: profile, error: profileError } = await userClient
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const providerResult = asRecord(await sasPayRequest('/checkout-sessions/', {
+      const providerResult = asRecord(await alphaPayRequest('/checkout-sessions/', {
         method: 'POST',
         body: JSON.stringify({
           amount: Number(intent.amount).toFixed(2),
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
           customer_email: email,
           customer_name: name,
           customer_phone: auth.user.phone || '',
-          return_url: `${appBaseUrl}/?saspay_topup_id=${encodeURIComponent(topupId)}`,
+          return_url: `${appBaseUrl}/?alphapay_topup_id=${encodeURIComponent(topupId)}`,
           fee_charge_mode: 'ADD_ON',
           metadata: { statutpay_wallet_topup_id: topupId },
         }),
@@ -71,10 +71,10 @@ export async function POST(request: NextRequest) {
 
       const checkoutUrl = typeof providerResult.checkout_url === 'string' ? providerResult.checkout_url : '';
       const sessionId = typeof providerResult.id === 'string' ? providerResult.id : '';
-      if (!checkoutUrl || !sessionId) throw new Error('SasPay n’a pas renvoyé la session de paiement attendue');
+      if (!checkoutUrl || !sessionId) throw new Error('AlphaPay n’a pas renvoyé la session de paiement attendue');
       const parsedUrl = new URL(checkoutUrl);
-      if (parsedUrl.protocol !== 'https:' || !['pay.saspay.me', 'sandbox-checkout.saspay.me'].includes(parsedUrl.hostname)) {
-        throw new Error('SasPay a renvoyé une adresse de paiement non autorisée');
+      if (parsedUrl.protocol !== 'https:' || !['pay.alphapay.me', 'sandbox-checkout.alphapay.me'].includes(parsedUrl.hostname)) {
+        throw new Error('AlphaPay a renvoyé une adresse de paiement non autorisée');
       }
 
       const saved = await getAdminClient()
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (reason) {
     const result = errorResponse(reason);
-    console.error('SasPay wallet top-up creation failed', result.status, result.error);
+    console.error('AlphaPay wallet top-up creation failed', result.status, result.error);
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 }

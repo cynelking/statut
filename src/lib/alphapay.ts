@@ -1,10 +1,10 @@
-export interface SasPayCountry {
+export interface AlphaPayCountry {
   iso_code: string;
   name: string;
   default_currency: string;
 }
 
-export interface SasPayNetwork {
+export interface AlphaPayNetwork {
   code: string;
   name: string;
   country: string;

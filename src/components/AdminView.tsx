@@ -23,7 +23,7 @@ export default function AdminView({ c }: { c: Ctx }) {
   const [payoutBusy, setPayoutBusy] = useState<number | null>(null);
   const [topupBusy, setTopupBusy] = useState<string | null>(null);
   const { camps, aP, aW, walletTopupsReview } = c.d;
-  const toActivate = camps.filter((x) => x.status === 'pending' && x.payment_provider !== 'saspay');
+  const toActivate = camps.filter((x) => x.status === 'pending' && x.payment_provider !== 'alphapay');
   const toReviewPayment = camps.filter((x) => x.status === 'pending' && x.payment_status === 'review');
   const title = (id: number) => camps.find((x) => x.id === id)?.title ?? '#' + id;
 
@@ -109,13 +109,13 @@ export default function AdminView({ c }: { c: Ctx }) {
       try {
         const token = (await sb.auth.getSession()).data.session?.access_token;
         if (!token) throw new Error(t('auth_login_hint'));
-        const response = await fetch('/api/saspay/payout', {
+        const response = await fetch('/api/alphapay/payout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ withdrawalId: id }),
         });
         const result = await response.json() as { status?: string; error?: string };
-        if (!response.ok) throw new Error(result.error || 'Impossible de traiter le payout SasPay');
+        if (!response.ok) throw new Error(result.error || 'Impossible de traiter le payout AlphaPay');
         await c.reload();
         c.say(t(result.status === 'paid' ? 'saspay_payout_paid'
           : result.status === 'failed' ? 'saspay_payout_failed' : 'saspay_payout_pending'));

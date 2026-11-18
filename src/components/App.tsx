@@ -124,8 +124,8 @@ export default function App() {
   useEffect(() => {
     if (!user || typeof window === 'undefined') return;
     const url = new URL(window.location.href);
-    const paymentId = url.searchParams.get('saspay_payment_id');
-    const topupId = url.searchParams.get('saspay_topup_id');
+    const paymentId = url.searchParams.get('alphapay_payment_id');
+    const topupId = url.searchParams.get('alphapay_topup_id');
     if (!paymentId && !topupId) return;
 
     let active = true;
@@ -133,17 +133,17 @@ export default function App() {
       const session = await sb.auth.getSession();
       const token = session.data.session?.access_token;
       if (!token) return;
-      url.searchParams.delete('saspay_payment_id');
-      url.searchParams.delete('saspay_topup_id');
+      url.searchParams.delete('alphapay_payment_id');
+      url.searchParams.delete('alphapay_topup_id');
       window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
 
       const endpoint = paymentId ? 'payment-status' : 'wallet-topup-status';
       const id = paymentId || topupId;
-      const response = await fetch(`/api/saspay/${endpoint}?id=${encodeURIComponent(id || '')}`, {
+      const response = await fetch(`/api/alphapay/${endpoint}?id=${encodeURIComponent(id || '')}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const result = await response.json() as { status?: string; error?: string };
-      if (!response.ok) throw new Error(result.error || 'Impossible de vérifier le paiement SasPay');
+      if (!response.ok) throw new Error(result.error || 'Impossible de vérifier le paiement AlphaPay');
       await load(user);
       if (!active) return;
       if (topupId) {
