@@ -68,6 +68,9 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
               });
               throw new Error(t('signup_db_error'));
             }
+            if (/email.*rate.?limit|rate.?limit.*email/i.test(r.error.message)) {
+              throw new Error(t('email_rate_limit'));
+            }
             throw r.error;
           }
           if (r.data.user?.identities && r.data.user.identities.length === 0) throw new Error(t('exists'));
