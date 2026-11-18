@@ -91,6 +91,28 @@ export default function LandingView() {
         <p className="landing-note">{t('landing_note')}</p>
       </section>
 
+      <section className="landing-benefits landing-withdrawals" aria-labelledby="landing-withdrawals-title">
+        <div className="landing-benefits-visual">
+          <Image
+            src="/statutpay-annonceurs.png"
+            alt={t('landing_withdrawals_image_alt')}
+            fill
+            sizes="(max-width: 620px) 100vw, 55vw"
+          />
+        </div>
+        <div className="landing-benefits-copy">
+          <span className="landing-eyebrow landing-eyebrow-blue">{t('landing_withdrawals_eyebrow')}</span>
+          <h2 id="landing-withdrawals-title">{t('landing_withdrawals_title')}</h2>
+          <p>{t('landing_withdrawals_intro')}</p>
+          <ul className="landing-benefits-list">
+            <li>{t('landing_withdrawals_item1')}</li>
+            <li>{t('landing_withdrawals_item2')}</li>
+            <li>{t('landing_withdrawals_item3')}</li>
+          </ul>
+          <a className="landing-benefits-cta" href="#auth">{t('landing_withdrawals_cta')}</a>
+        </div>
+      </section>
+
       <section className="landing-final" aria-labelledby="landing-final-title">
         <div>
           <h2 id="landing-final-title">{t('landing_final_title')}</h2>
