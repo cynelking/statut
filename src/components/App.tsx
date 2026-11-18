@@ -31,6 +31,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('f');
   const [sel, setSel] = useState<number | null>(null);
   const [recovery, setRecovery] = useState(false);
+  const [profileLoadError, setProfileLoadError] = useState('');
   const [toast, setToast] = useState('');
   const [sheet, setSheet] = useState<null | 'help'>(null);
 
@@ -75,11 +76,14 @@ export default function App() {
       sb.rpc('ratings'),
       sb.from('reviews').select('proof_id').eq('from_user', u.id),
     ]);
+    if (p.error) throw p.error;
+    const prof = (p.data ?? null) as Profile | null;
+    if (!prof) throw new Error('No profile is associated with this account.');
+
     const ratings: Data['ratings'] = {};
     for (const r of ((rt.data ?? []) as { uid: string; dir: string; score: number; n: number }[])) {
       if (r.dir === 'pub_to_adv') ratings[r.uid] = { score: Number(r.score), n: r.n };
     }
-    const prof = (p.data ?? null) as Profile | null;
     if (bal.error) throw bal.error;
     if (walletBalance.error) throw walletBalance.error;
     let aP: Proof[] = [];
@@ -114,12 +118,29 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) { setProfile(null); setD(EMPTY); return; }
-    const id = setTimeout(() => { load(user).catch((reason: unknown) => say(reason instanceof Error ? reason.message : String(reason))); }, 0);
+    if (!user) {
+      setProfile(null);
+      setD(EMPTY);
+      setProfileLoadError('');
+      return;
+    }
+    setProfileLoadError('');
+    const id = setTimeout(() => {
+      load(user).catch((reason: unknown) => {
+        setProfileLoadError(reason instanceof Error ? reason.message : String(reason));
+      });
+    }, 0);
     return () => clearTimeout(id);
-  }, [user?.id, load, say]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reload = useCallback(async () => { if (user) await load(user); }, [user, load]);
+  const retryProfileLoad = useCallback(() => {
+    if (!user) return;
+    setProfileLoadError('');
+    load(user).catch((reason: unknown) => {
+      setProfileLoadError(reason instanceof Error ? reason.message : String(reason));
+    });
+  }, [user, load]);
 
   useEffect(() => {
     if (!user || typeof window === 'undefined') return;
@@ -187,6 +208,13 @@ export default function App() {
     </>
   );
   else if (recovery) body = <ResetView run={run} say={say} done={() => setRecovery(false)} />;
+  else if (!profile && profileLoadError) body = (
+    <section className="card err" role="alert">
+      <p>{t('app_load_failed')}</p>
+      <p className="m">{profileLoadError}</p>
+      <button className="s" type="button" onClick={retryProfileLoad}>{t('admin_refresh')}</button>
+    </section>
+  );
   else if (!profile) body = <p className="m">…</p>;
   else {
     const ctx: Ctx = { user, profile, d, reload, say, run, sel, pick: setSel, go: setTab, toggleFav };
