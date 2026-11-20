@@ -2,7 +2,7 @@ export const FAQ: Record<string, { q: string; a: string }[]> = {
   fr: [
     { q: 'Comment je gagne de l’argent ?', a: 'Choisissez une annonce dans l’onglet Annonces, copiez-la et publiez-la en statut WhatsApp. Après 24 h, envoyez la capture d’écran de vos vues. Chaque vue validée vous rapporte 1 F.' },
     { q: 'Pourquoi enregistrer le numéro de l’admin ?', a: 'Il nous permet de voir vos statuts pour vérifier qu’ils sont bien publiés et éviter la fraude. Votre statut doit être visible par vos contacts.' },
-    { q: 'Quand suis-je payé ?', a: 'Après validation de votre capture par l’admin, le montant est ajouté à votre solde. Vous pouvez retirer dès 500 F par Mobile Money.' },
+    { q: 'Quand suis-je payé ?', a: 'Après validation de votre capture par l’admin, le montant est ajouté à votre solde. Vous pouvez retirer dès 200 F par Mobile Money.' },
     { q: 'Pourquoi ma preuve a-t-elle été refusée ?', a: 'Capture illisible, date non visible, statut supprimé trop tôt ou nombre de vues non conforme. Refaites une capture claire avec la date visible.' },
     { q: 'Comment fonctionnent les niveaux ?', a: 'Argent : 5 validations avec 80 % de réussite (+5 % de bonus). Or : 20 validations avec 90 % de réussite (+10 % de bonus).' },
     { q: 'Comment lancer une campagne ?', a: 'Onglet Annonceur : saisissez le titre, le budget (min. 1 000 F) et le texte. Frais de création : 500 F. Payez par Mobile Money, la campagne est activée après confirmation.' },
@@ -13,7 +13,7 @@ export const FAQ: Record<string, { q: string; a: string }[]> = {
   en: [
     { q: 'How do I earn money?', a: 'Pick an ad in the Ads tab, copy it and post it on your WhatsApp status. After 24 h, send a screenshot of your views. Every approved view earns you 1 F.' },
     { q: 'Why save the admin’s number?', a: 'It lets us view your statuses to check they are really posted and prevent fraud. Your status must be visible to your contacts.' },
-    { q: 'When do I get paid?', a: 'Once the admin approves your screenshot, the amount is added to your balance. You can withdraw from 500 F via Mobile Money.' },
+    { q: 'When do I get paid?', a: 'Once the admin approves your screenshot, the amount is added to your balance. You can withdraw from 200 F via Mobile Money.' },
     { q: 'Why was my proof rejected?', a: 'Unreadable screenshot, date not visible, status deleted too early or views that do not match. Take a clear screenshot with the date visible.' },
     { q: 'How do levels work?', a: 'Silver: 5 approvals with an 80% success rate (+5% bonus). Gold: 20 approvals with 90% (+10% bonus).' },
     { q: 'How do I launch a campaign?', a: 'Advertiser tab: enter the title, budget (min. 1,000 F) and text. Creation fee: 500 F. Pay via Mobile Money and the campaign goes live after confirmation.' },
@@ -24,7 +24,7 @@ export const FAQ: Record<string, { q: string; a: string }[]> = {
   pt: [
     { q: "Como eu ganho dinheiro?", a: "Escolha um anúncio na aba Anúncios, copie-o e publique no status do WhatsApp. Após 24 h, envie a captura de tela das suas visualizações. Cada visualização validada rende 1 F." },
     { q: "Por que salvar o número do admin?", a: "Ele nos permite ver os seus status para verificar se foram mesmo publicados e evitar fraudes. O seu status deve estar visível para os seus contatos." },
-    { q: "Quando recebo?", a: "Depois que o admin validar sua captura, o valor é somado ao seu saldo. Você pode sacar a partir de 500 F por Mobile Money." },
+    { q: "Quando recebo?", a: "Depois que o admin validar sua captura, o valor é somado ao seu saldo. Você pode sacar a partir de 200 F por Mobile Money." },
     { q: "Por que minha prova foi recusada?", a: "Captura ilegível, data não visível, status apagado cedo demais ou número de visualizações divergente. Faça uma nova captura nítida, com a data visível." },
     { q: "Como funcionam os níveis?", a: "Prata: 5 validações com 80 % de êxito (+5 % de bônus). Ouro: 20 validações com 90 % (+10 % de bônus)." },
     { q: "Como lançar uma campanha?", a: "Aba Anunciante: informe título, orçamento (mín. 1 000 F) e texto. Taxa de criação: 500 F. Pague por Mobile Money e a campanha é ativada após a confirmação." },

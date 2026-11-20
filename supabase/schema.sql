@@ -55,7 +55,7 @@ $$ select coalesce((select sum(views) from proofs where user_id=auth.uid() and s
 create or replace function public.request_withdrawal(p_amount int, p_operator text) returns void language plpgsql security definer set search_path=public as $$
 begin
   perform 1 from profiles where id=auth.uid() for update;
-  if p_amount<500 then raise exception 'Minimum 500 F'; end if;
+  if p_amount<200 then raise exception 'Minimum 200 F'; end if;
   if p_amount>my_balance() then raise exception 'Solde insuffisant'; end if;
   insert into withdrawals(user_id,amount,operator) values(auth.uid(),p_amount,p_operator);
 end $$;

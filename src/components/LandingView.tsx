@@ -19,7 +19,7 @@ export default function LandingView() {
           </div>
           <div className="landing-highlights" role="group" aria-label={t('landing_highlights')}>
             <span><b>1 F</b> {t('landing_per_view')}</span>
-            <span><b>500 F</b> {t('landing_min_withdrawal')}</span>
+            <span><b>200 F</b> {t('landing_min_withdrawal')}</span>
           </div>
         </div>
 
