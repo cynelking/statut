@@ -205,7 +205,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         setTitle(''); setBudget(''); setContent(''); setMediaFile(null); setMediaLink(''); setMediaInputKey((key) => key + 1); setBoost(false); setStarts(''); setEnds('');
         await c.reload();
         if (due > 0) await createAlphaPayCheckout(campaignId);
-        else c.say(t('created'));
+        else c.say(t(isAdmin ? 'admin_campaign_created' : 'created'));
       } finally {
         setCreating(false);
       }
