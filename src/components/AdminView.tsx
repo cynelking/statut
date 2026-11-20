@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n';
 import { Ctx, FEE } from '@/lib/types';
 import { BarChart } from './ui';
 import AdminPromos from './AdminPromos';
+import AdminAnnouncements from './AdminAnnouncements';
 import AdminUsers from './AdminUsers';
 import AdminActivity from './AdminActivity';
 
@@ -170,6 +171,7 @@ export default function AdminView({ c }: { c: Ctx }) {
 
       {view === 'manage' && (
         <>
+          <AdminAnnouncements />
           <AdminPromos c={c} />
           <section className="card">
             <h2>{t('cq')}</h2>

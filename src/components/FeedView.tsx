@@ -1,10 +1,18 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useI18n } from '@/lib/i18n';
 import type { CType, Campaign, Ctx } from '@/lib/types';
 import { Icon } from './ui';
 import PushToggle from './PushToggle';
+import { sb } from '@/lib/supabase';
+
+interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  created_at: string;
+}
 
 const URL_RE = /^https?:\/\/\S+$/i;
 const imageLoader = ({ src }: { src: string }) => src;
@@ -23,6 +31,9 @@ export default function FeedView({ c }: { c: Ctx }) {
   const { t, f, lang } = useI18n();
   const [fmt, setFmt] = useState<'all' | CType>('all');
   const [scope, setScope] = useState<'mine' | 'all' | 'fav'>('mine');
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
+  const [announcementsError, setAnnouncementsError] = useState(false);
   const favs = new Set(c.d.favs);
   const submitted = new Set(c.d.proofs.map((p) => p.campaign_id));
   const eligible = (x: Campaign) => !x.country || x.country === c.profile.country;
@@ -34,6 +45,34 @@ export default function FeedView({ c }: { c: Ctx }) {
     && (fmt === 'all' || x.type === fmt)
     && (scope === 'all' || (scope === 'mine' && eligible(x)) || (scope === 'fav' && favs.has(x.id))))
     .sort((a, b) => Number(boosted(b)) - Number(boosted(a)) || b.id - a.id);
+
+  useEffect(() => {
+    let current = true;
+    const loadAnnouncements = async () => {
+      try {
+        const result = await sb.from('announcements')
+          .select('id,title,body,created_at')
+          .order('created_at', { ascending: false })
+          .limit(5);
+        if (!current) return;
+        if (result.error) {
+          console.error('Could not load announcements', result.error);
+          setAnnouncementsError(true);
+        } else {
+          setAnnouncements(result.data as Announcement[]);
+        }
+      } catch (reason) {
+        if (current) {
+          console.error('Could not load announcements', reason);
+          setAnnouncementsError(true);
+        }
+      } finally {
+        if (current) setAnnouncementsLoading(false);
+      }
+    };
+    void loadAnnouncements();
+    return () => { current = false; };
+  }, []);
 
   function copy(x: Campaign) {
     c.run(async () => {
@@ -130,6 +169,25 @@ export default function FeedView({ c }: { c: Ctx }) {
       </section>
 
       <PushToggle c={c} />
+
+      {announcementsLoading && <p className="m" role="status">{t('announcement_loading')}</p>}
+      {announcementsError && <p className="card err" role="alert">{t('announcement_load_error')}</p>}
+      {announcements.length > 0 && (
+        <section className="card" aria-label={t('announcement_feed_title')}>
+          <h2>{t('announcement_feed_title')}</h2>
+          <div className="announcement-list">
+            {announcements.map((announcement) => (
+              <article className="announcement-entry" key={announcement.id}>
+                <div className="adh">
+                  <b>{announcement.title}</b>
+                  <span className="m">{ago(announcement.created_at, lang)}</span>
+                </div>
+                <p>{announcement.body}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="chipsf" role="group">
         {(['mine', 'all', 'fav'] as const).map((k) => (
