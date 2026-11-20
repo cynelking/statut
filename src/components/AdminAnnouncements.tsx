@@ -37,7 +37,7 @@ export default function AdminAnnouncements() {
   }
 
   return (
-    <section className="card">
+    <section className="card announcement-admin">
       <h2>{t('announcement_admin_title')}</h2>
       <p className="m">{t('announcement_admin_help')}</p>
       <form onSubmit={publish}>

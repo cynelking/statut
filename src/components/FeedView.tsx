@@ -173,7 +173,7 @@ export default function FeedView({ c }: { c: Ctx }) {
       {announcementsLoading && <p className="m" role="status">{t('announcement_loading')}</p>}
       {announcementsError && <p className="card err" role="alert">{t('announcement_load_error')}</p>}
       {announcements.length > 0 && (
-        <section className="card" aria-label={t('announcement_feed_title')}>
+        <section className="card announcement-feed" aria-label={t('announcement_feed_title')}>
           <h2>{t('announcement_feed_title')}</h2>
           <div className="announcement-list">
             {announcements.map((announcement) => (
