@@ -12,6 +12,7 @@ interface Announcement {
   title: string;
   body: string;
   created_at: string;
+  pinned_until: string | null;
 }
 
 const URL_RE = /^https?:\/\/\S+$/i;
@@ -50,16 +51,38 @@ export default function FeedView({ c }: { c: Ctx }) {
     let current = true;
     const loadAnnouncements = async () => {
       try {
-        const result = await sb.from('announcements')
-          .select('id,title,body,created_at')
-          .order('created_at', { ascending: false })
-          .limit(5);
+        const now = new Date();
+        const select = 'id,title,body,created_at,pinned_until';
+        const [recent, pinned] = await Promise.all([
+          sb.from('announcements')
+            .select(select)
+            .order('created_at', { ascending: false })
+            .limit(5),
+          sb.from('announcements')
+            .select(select)
+            .gt('pinned_until', now.toISOString())
+            .order('pinned_until', { ascending: true })
+            .limit(1000),
+        ]);
         if (!current) return;
-        if (result.error) {
-          console.error('Could not load announcements', result.error);
+        if (recent.error || pinned.error) {
+          console.error('Could not load announcements', { recent: recent.error, pinned: pinned.error });
           setAnnouncementsError(true);
         } else {
-          setAnnouncements(result.data as Announcement[]);
+          const byId = new Map<number, Announcement>();
+          for (const announcement of [...(pinned.data ?? []), ...(recent.data ?? [])]) {
+            byId.set(announcement.id, announcement as Announcement);
+          }
+          const sorted = [...byId.values()].sort((a, b) => {
+            const aPinned = !!a.pinned_until && Date.parse(a.pinned_until) > now.getTime();
+            const bPinned = !!b.pinned_until && Date.parse(b.pinned_until) > now.getTime();
+            if (aPinned !== bPinned) return aPinned ? -1 : 1;
+            if (aPinned && bPinned) {
+              return Date.parse(a.pinned_until ?? '') - Date.parse(b.pinned_until ?? '');
+            }
+            return Date.parse(b.created_at) - Date.parse(a.created_at);
+          });
+          setAnnouncements(sorted);
         }
       } catch (reason) {
         if (current) {
@@ -179,7 +202,12 @@ export default function FeedView({ c }: { c: Ctx }) {
             {announcements.map((announcement) => (
               <article className="announcement-entry" key={announcement.id}>
                 <div className="adh">
-                  <b>{announcement.title}</b>
+                  <div className="rl">
+                    <b>{announcement.title}</b>
+                    {announcement.pinned_until && Date.parse(announcement.pinned_until) > Date.now() && (
+                      <span className="tag w">{t('announcement_pinned')} · {ago(announcement.pinned_until, lang)}</span>
+                    )}
+                  </div>
                   <span className="m">{ago(announcement.created_at, lang)}</span>
                 </div>
                 <p>{announcement.body}</p>

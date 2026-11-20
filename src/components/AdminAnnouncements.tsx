@@ -7,6 +7,7 @@ export default function AdminAnnouncements() {
   const { t } = useI18n();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [pinHours, setPinHours] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
@@ -22,12 +23,13 @@ export default function AdminAnnouncements() {
       const response = await fetch('/api/announcements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title, body }),
+        body: JSON.stringify({ title, body, pinHours }),
       });
       const payload = await response.json() as { sent?: number; failed?: number; error?: string };
       if (!response.ok) throw new Error(payload.error || t('announcement_error'));
       setTitle('');
       setBody('');
+      setPinHours(0);
       setResult(`${t('announcement_published')} ${payload.sent ?? 0} · ${t('announcement_failed')} ${payload.failed ?? 0}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -48,6 +50,16 @@ export default function AdminAnnouncements() {
         <label className="field">
           <span>{t('announcement_message')}</span>
           <textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={2000} rows={4} required />
+        </label>
+        <label className="field">
+          <span>{t('announcement_pin_duration')}</span>
+          <select value={pinHours} onChange={(event) => setPinHours(Number(event.target.value))}>
+            <option value={0}>{t('announcement_pin_none')}</option>
+            <option value={24}>{t('announcement_pin_1d')}</option>
+            <option value={72}>{t('announcement_pin_3d')}</option>
+            <option value={168}>{t('announcement_pin_7d')}</option>
+            <option value={720}>{t('announcement_pin_30d')}</option>
+          </select>
         </label>
         {error && <p className="err" role="alert">{error}</p>}
         {result && <p className="note" role="status">{result}</p>}

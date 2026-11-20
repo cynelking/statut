@@ -23,8 +23,12 @@ export async function POST(request: NextRequest) {
     }
     const title = 'title' in body && typeof body.title === 'string' ? body.title.trim() : '';
     const message = 'body' in body && typeof body.body === 'string' ? body.body.trim() : '';
+    const pinHours = 'pinHours' in body ? body.pinHours : 0;
     if (!title || title.length > 120 || !message || message.length > 2000) {
       return NextResponse.json({ error: 'invalid_announcement' }, { status: 400 });
+    }
+    if (typeof pinHours !== 'number' || ![0, 24, 72, 168, 720].includes(pinHours)) {
+      return NextResponse.json({ error: 'invalid_announcement_pin_duration' }, { status: 400 });
     }
 
     const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -37,7 +41,12 @@ export async function POST(request: NextRequest) {
     if (subscriptions.error) throw subscriptions.error;
 
     const inserted = await admin.from('announcements')
-      .insert({ title, body: message, created_by: auth.user.id })
+      .insert({
+        title,
+        body: message,
+        created_by: auth.user.id,
+        pinned_until: pinHours ? new Date(Date.now() + pinHours * 60 * 60 * 1000).toISOString() : null,
+      })
       .select('id')
       .single();
     if (inserted.error) throw inserted.error;
