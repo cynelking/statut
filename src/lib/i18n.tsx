@@ -15,6 +15,7 @@ const T: Record<Lang, Record<string, string>> = { ...BASE, pt: PT, ee: EE, gej: 
 
 const EXTRA_TEXT: Partial<Record<Lang, Record<string, string>>> = {
   fr: {
+    admin_campaign_free: 'Campagne administrateur gratuite : aucun débit ni paiement AlphaPay ne sera nécessaire.',
     landing_eyebrow: 'Publicité et revenus via WhatsApp',
     landing_title: 'Les statuts WhatsApp deviennent une opportunité pour tous.',
     landing_intro: 'StatutPay met en relation les annonceurs qui veulent faire connaître leurs offres et les diffuseurs qui partagent des annonces en statut WhatsApp.',
@@ -207,6 +208,7 @@ const EXTRA_TEXT: Partial<Record<Lang, Record<string, string>>> = {
     announcement_feed_title: 'Annonces de l’administration',
   },
   en: {
+    admin_campaign_free: 'Free admin campaign: no balance deduction or AlphaPay payment is required.',
     landing_eyebrow: 'Advertising and earnings through WhatsApp',
     landing_title: 'WhatsApp Status becomes an opportunity for everyone.',
     landing_intro: 'StatutPay connects advertisers who want to promote their offers with publishers who share ads on WhatsApp Status.',

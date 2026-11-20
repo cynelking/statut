@@ -49,6 +49,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
   const [payingCampaign, setPayingCampaign] = useState<number | null>(null);
   const [topupAmount, setTopupAmount] = useState('');
   const [topupBusy, setTopupBusy] = useState(false);
+  const isAdmin = c.profile.role === 'admin';
 
   useEffect(() => {
     if (!mediaFile) { setFilePreview(null); return; }
@@ -58,10 +59,10 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
   }, [mediaFile]);
 
   const b = Math.max(0, Number(budget) || 0);
-  const total = b + FEE + (boost ? BOOST_FEE : 0);
+  const total = isAdmin ? 0 : b + FEE + (boost ? BOOST_FEE : 0);
   const credit = c.profile.credit;
-  const used = useCredit ? Math.min(credit, total) : 0;
-  const walletUsed = c.d.walletBalance >= total - used ? total - used : 0;
+  const used = !isAdmin && useCredit ? Math.min(credit, total) : 0;
+  const walletUsed = !isAdmin && c.d.walletBalance >= total - used ? total - used : 0;
   const due = total - used - walletUsed;
   const mine = c.d.camps.filter((x) => x.owner === c.user.id);
   const titleOf = (id: number) => c.d.camps.find((x) => x.id === id)?.title ?? '#' + id;
@@ -189,7 +190,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         }
         const r = await sb.rpc('create_campaign', {
           p_title: title.trim(), p_type: type, p_content: content.trim(), p_media_url: mediaUrl,
-          p_budget: b, p_country: target, p_boost: boost, p_use_credit: useCredit,
+          p_budget: b, p_country: target, p_boost: boost, p_use_credit: !isAdmin && useCredit,
           p_starts: starts || null, p_ends: ends || null,
         });
         if (r.error) {
@@ -300,18 +301,19 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         <label htmlFor="tx">{type === 'txt' ? t('content') : t('media_caption')}</label>
         <textarea id="tx" rows={3} maxLength={500} value={content} onChange={(e) => setContent(e.target.value)} />
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 500 }}>
-          <input type="checkbox" checked={boost} onChange={(e) => setBoost(e.target.checked)} /> {t('boost')} (+{f(BOOST_FEE)})
+          <input type="checkbox" checked={boost} onChange={(e) => setBoost(e.target.checked)} /> {t('boost')}{!isAdmin && <> (+{f(BOOST_FEE)})</>}
         </label>
-        {credit > 0 && (
+        {!isAdmin && credit > 0 && (
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 500 }}>
             <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} /> {t('use_credit')} ({f(credit)})
           </label>
         )}
-        {c.d.walletBalance > 0 && <p className="m">{t('wallet_campaign_note')}</p>}
+        {!isAdmin && c.d.walletBalance > 0 && <p className="m">{t('wallet_campaign_note')}</p>}
         <p className="note" style={{ marginTop: 14 }}>
-          {t('fee')} : <b>{f(FEE)}</b>{boost && <> · {t('boost_fee')} : <b>{f(BOOST_FEE)}</b></>} · {t('maxv')} : <b>{b.toLocaleString()}</b><br />
-          {t('tot')} : <b>{f(total)}</b>{used > 0 && <> − {t('credit')} <b>{f(used)}</b></>}{walletUsed > 0 && <> − {t('wallet_title')} <b>{f(walletUsed)}</b></>}<br />
-          {t('to_pay')} : <b>{f(due)}</b>{ends && <><br /><span className="m">{t('refund_note')}</span></>}
+          {isAdmin ? <>{t('admin_campaign_free')}<br />{t('maxv')} : <b>{b.toLocaleString()}</b></>
+            : <>{t('fee')} : <b>{f(FEE)}</b>{boost && <> · {t('boost_fee')} : <b>{f(BOOST_FEE)}</b></>} · {t('maxv')} : <b>{b.toLocaleString()}</b><br />
+              {t('tot')} : <b>{f(total)}</b>{used > 0 && <> − {t('credit')} <b>{f(used)}</b></>}{walletUsed > 0 && <> − {t('wallet_title')} <b>{f(walletUsed)}</b></>}<br />
+              {t('to_pay')} : <b>{f(due)}</b>{ends && <><br /><span className="m">{t('refund_note')}</span></>}</>}
         </p>
         <button className="p" type="submit" disabled={creating}>{t('launch')}</button>
       </form>
@@ -333,7 +335,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         <h2>{t('myc')}</h2>
         {mine.length === 0 && <p className="m">{t('none')}</p>}
         {mine.map((x, i) => {
-          const owed = x.budget + FEE + (x.boost_hours > 0 ? BOOST_FEE : 0) - x.credit_used - (x.wallet_used || 0);
+          const owed = x.admin_created ? 0 : x.budget + FEE + (x.boost_hours > 0 ? BOOST_FEE : 0) - x.credit_used - (x.wallet_used || 0);
           return (
             <div className={'row' + (i === 0 ? ' first' : '')} style={{ display: 'block' }} key={x.id}>
               <b>{x.title}</b>{' '}
