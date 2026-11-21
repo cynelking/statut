@@ -22,12 +22,14 @@ import ScrollEffects from './ScrollEffects';
 import LandingView from './LandingView';
 import TransactionHistory from './TransactionHistory';
 import PushToggle from './PushToggle';
+import { FAQ } from '@/lib/faq';
+import { ADMIN } from '@/lib/types';
 
 const EMPTY: Data = { bal: 0, walletBalance: 0, camps: [], proofs: [], wd: [], aP: [], aW: [], walletTopupsReview: [], favs: [], myReviews: [], ratings: {} };
-type WorkspacePage = 'dashboard' | 'feed' | 'advertiser' | 'campaigns' | 'wallet' | 'create' | 'admin' | 'profile' | 'notifications';
+type WorkspacePage = 'dashboard' | 'feed' | 'advertiser' | 'campaigns' | 'wallet' | 'create' | 'admin' | 'profile' | 'notifications' | 'help';
 
 export default function App() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [d, setD] = useState<Data>(EMPTY);
@@ -138,6 +140,7 @@ export default function App() {
       setProfile(null);
       setD(EMPTY);
       setProfileLoadError('');
+      setPage('dashboard');
       return;
     }
     setProfileLoadError('');
@@ -230,7 +233,7 @@ export default function App() {
     navigate(destinations[next]);
   };
   const activeLabel = workspaceItems.find((item) => item.id === page)?.label
-    ?? (page === 'notifications' ? t('push_t') : t('profile'));
+    ?? (page === 'notifications' ? t('push_t') : page === 'help' ? t('help') : t('profile'));
 
   let body: React.ReactNode;
   if (!user) body = (
@@ -267,6 +270,16 @@ export default function App() {
                         <PushToggle c={ctx} />
                         <TransactionHistory />
                       </section>
+                        : page === 'help' ? <section className="page-screen">
+                          <div className="page-head"><div><div className="eyebrow">{t('help')}</div><h1>{t('faq_t')}</h1><p className="sub">{t('contact')}</p></div></div>
+                          <section className="card">
+                            <a className="p" href={`https://wa.me/${ADMIN.replace(/\D/g, '')}?text=${encodeURIComponent(t('help_msg') + ' ' + profile.phone)}`} target="_blank" rel="noopener noreferrer">{t('contact')}</a>
+                            <h2 style={{ marginTop: 20 }}>{t('faq_t')}</h2>
+                            {(FAQ[lang] ?? FAQ.fr).map((item) => (
+                              <details className="faq" key={item.q}><summary>{item.q}</summary><p>{item.a}</p></details>
+                            ))}
+                          </section>
+                        </section>
                         : page === 'admin' && admin ? <AdminView c={ctx} /> : <PublisherView c={ctx} view="dashboard" />}
       </>
     );
@@ -275,7 +288,11 @@ export default function App() {
   return (
     <>
       <header className={`app-header${user ? '' : ' app-header-guest'}`}>
-        <div className="logo"><Image src="/brand-logo.png" alt="StatutPay" width={1513} height={405} priority /></div>
+        <div className="logo">
+          {user && !recovery
+            ? <><div className="brand-mark">S</div><strong>Statut<span>Pay</span></strong></>
+            : <Image src="/brand-logo.png" alt="StatutPay" width={1513} height={405} priority />}
+        </div>
         {user && !recovery && (
           <>
             <div className="workspace-label">{t('nav_workspace')}</div>
@@ -288,11 +305,11 @@ export default function App() {
             </nav>
           </>
         )}
-        {user && !recovery && <div className="workspace-footer">{t('nav_footer')}</div>}
+        {user && !recovery && <div className="workspace-footer">StatutPay 2.0<br />{t('nav_footer')}</div>}
         <div className="hr">
           <InstallButton />
           {user && !recovery && <button className="iconbtn" aria-label={t('push_t')} title={t('push_t')} onClick={() => navigate('notifications')}><Icon n="bell" /></button>}
-          <button className="iconbtn" aria-label={t('help')} title={t('help')} onClick={() => setSheet('help')}><Icon n="help" /></button>
+          <button className="iconbtn" aria-label={t('help')} title={t('help')} onClick={() => user && !recovery ? navigate('help') : setSheet('help')}><Icon n="help" /></button>
           {user && profile && (
             <button className="iconbtn avbtn" aria-label={t('profile')} title={t('profile')} onClick={() => navigate('profile')}>
               {profile.avatar ? <span aria-hidden="true">{profile.avatar}</span> : <Icon n="user" />}

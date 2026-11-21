@@ -39,6 +39,7 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
   );
 
   useEffect(() => {
+    if (view !== 'wallet') return;
     let active = true;
     void (async () => {
       const session = await sb.auth.getSession();
@@ -65,7 +66,7 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
       if (active) setNetworkError(reason instanceof Error ? reason.message : String(reason));
     });
     return () => { active = false; };
-  }, [c.profile.country]);
+  }, [c.profile.country, view]);
 
   function sendProof() {
     c.run(async () => {

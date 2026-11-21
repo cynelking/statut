@@ -244,7 +244,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
         <div className="page-head">
           <div>
             <div className="eyebrow">{view === 'campaigns' ? t('r_a') : t('r_a')}</div>
-            <h1>{view === 'campaigns' ? t('myc') : t('wallet_title')}</h1>
+            <h1>{view === 'campaigns' ? t('myc') : t('advertiser_center')}</h1>
             <p className="sub">{view === 'campaigns' ? t('profile_created_campaigns') : t('wallet_description')}</p>
           </div>
           <button className="p" type="button" onClick={() => onNavigate?.('create')}>{t('new')} ＋</button>
@@ -255,7 +255,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
           <div className="dashboard-kpis">
             <article className="dashboard-kpi"><span className="dashboard-kpi-icon">F</span><span>{t('wallet_title')}</span><b>{f(c.d.walletBalance)}</b><small>{t('wallet_description')}</small></article>
             <article className="dashboard-kpi"><span className="dashboard-kpi-icon">▣</span><span>{t('k_camps')}</span><b>{activeCampaigns.length}</b><small>{t('st_active')}</small></article>
-            <article className="dashboard-kpi"><span className="dashboard-kpi-icon">◉</span><span>{t('spent')}</span><b>{f(totalSpent)}</b><small>{t('profile_total_views')}</small></article>
+            <article className="dashboard-kpi"><span className="dashboard-kpi-icon">◉</span><span>{t('spent')}</span><b>{f(totalSpent)}</b><small>{t('advertiser_spent_hint')}</small></article>
             <article className="dashboard-kpi"><span className="dashboard-kpi-icon">◷</span><span>{t('rest')}</span><b>{f(remainingBudget)}</b><small>{f(totalBudget)}</small></article>
           </div>
           <section className="card">
@@ -419,6 +419,6 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
           );
         })}
       </section>
-    </>
+    </div>
   );
 }
