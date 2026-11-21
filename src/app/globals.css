@@ -463,8 +463,18 @@ button.s.on{box-shadow:0 6px 15px color-mix(in srgb,var(--brand) 18%,transparent
 }
 .feed-campaign-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .feed-campaign-grid .ad{min-width:0}
+.workspace-topbar{display:none}
 
 @media(min-width:860px){
+  .workspace-topbar{
+    position:fixed;left:250px;right:0;top:0;height:76px;z-index:7;
+    display:flex;align-items:center;padding:0 34px;
+    background:color-mix(in srgb,var(--surf) 94%,transparent);
+    border-bottom:1px solid var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    color:var(--mute);font-size:13px
+  }
+  .workspace-topbar span{color:color-mix(in srgb,var(--mute) 65%,transparent);padding:0 5px}
+  .workspace-topbar b{color:var(--ink)}
   header.app-header{
     position:fixed;left:0;top:0;bottom:0;width:250px;height:100vh;max-width:none;
     display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
@@ -489,11 +499,8 @@ button.s.on{box-shadow:0 6px 15px color-mix(in srgb,var(--brand) 18%,transparent
   }
   header.app-header>.hr .lang,
   header.app-header>.hr .iconbtn{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff}
-  body>header.app-header~main{max-width:none;margin-left:250px;padding:32px 34px 50px}
-  body>header.app-header~main:before{
-    content:"";position:absolute;left:250px;right:0;top:0;height:76px;z-index:-1;
-    background:color-mix(in srgb,var(--surf) 92%,transparent);border-bottom:1px solid var(--line)
-  }
+  body>header.app-header~main{max-width:none;margin-left:250px;padding:28px 34px 50px}
+  body>header.app-header~main.app-main-auth{padding-top:108px}
 }
 @media(min-width:1180px){
   .feed-campaign-grid{grid-template-columns:repeat(3,minmax(0,1fr))}

@@ -209,7 +209,7 @@ export default function App() {
   }, [user, d.favs, run, load]);
 
   const admin = profile?.role === 'admin';
-  const tabs: Tab[] = admin ? ['f', 'd', 'a', 'm', 'p'] : ['f', 'd', 'a', 'p'];
+  const tabs: Tab[] = admin ? ['d', 'f', 'a', 'm', 'p'] : ['d', 'f', 'a', 'p'];
 
   let body: React.ReactNode;
   if (!user) body = (
@@ -261,7 +261,12 @@ export default function App() {
           <LangSelect />
         </div>
       </header>
-      <main>
+      <main className={user && !recovery ? 'app-main-auth' : ''}>
+        {user && !recovery && (
+          <div className="workspace-topbar" aria-label="Fil d’Ariane">
+            <div>StatutPay <span>/</span> <b>{tab === 'd' ? t('r_d') : tab === 'f' ? t('r_f') : tab === 'a' ? t('r_a') : tab === 'm' ? t('r_m') : t('profile')}</b></div>
+          </div>
+        )}
         <ScrollEffects />
         <InstallBanner />
         {body}
