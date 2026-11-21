@@ -241,7 +241,7 @@ export default function App() {
 
   return (
     <>
-      <header className="app-header">
+      <header className={`app-header${user ? '' : ' app-header-guest'}`}>
         <div className="logo"><Image src="/brand-logo.png" alt="StatutPay" width={1513} height={405} priority /></div>
         <nav className="desktop-nav" aria-label="Navigation principale">
           {user && !recovery && tabs.map((r) => (
