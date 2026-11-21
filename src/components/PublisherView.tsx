@@ -9,8 +9,9 @@ import LevelCard from './LevelCard';
 import RateForm from './RateForm';
 import { isNet, queueProof } from '@/lib/offline';
 import { COUNTRY_CODES, type AlphaPayCountry, type AlphaPayNetwork } from '@/lib/alphapay';
+import TransactionHistory from './TransactionHistory';
 
-export default function PublisherView({ c }: { c: Ctx }) {
+export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?: 'dashboard' | 'wallet' }) {
   const { t, f } = useI18n();
   const [file, setFile] = useState<File | null>(null);
   const [payCountries, setPayCountries] = useState<AlphaPayCountry[]>([]);
@@ -137,6 +138,7 @@ export default function PublisherView({ c }: { c: Ctx }) {
 
   const displayName = c.profile.display_name?.trim() || c.profile.phone.replace(/^\+/, '');
   const activeCampaigns = c.d.camps.filter((campaign) => campaign.status === 'active');
+  const recommendedCampaigns = activeCampaigns.filter((campaign) => campaign.spent < campaign.budget).slice(0, 3);
   const completedCount = c.d.proofs.filter((proof) => proof.status === 'approved').length;
   const recentProofs = [...my].sort((a, b) => Date.parse(b.created_at ?? '') - Date.parse(a.created_at ?? '')).slice(0, 3);
   const chartValues = Array.from({ length: 7 }, (_, index) => {
@@ -156,8 +158,25 @@ export default function PublisherView({ c }: { c: Ctx }) {
   }).join(' ');
 
   return (
-    <>
-      <div className="dashboard-head">
+    <div className={`publisher-view publisher-view-${view}`}>
+      {view === 'wallet' && (
+        <>
+          <div className="page-head">
+            <div><div className="eyebrow">{t('wallet_title')}</div><h1>{t('wd')}</h1><p className="sub">{t('tx_description')}</p></div>
+            <a className="p" href="#withdrawal-form">{t('wdb')} ↗</a>
+          </div>
+          <div className="wallet-hero">
+            <div><small>{t('bal')}</small><h2>{f(c.d.bal)}</h2><small>{t('profile_total_earned')}: {f(c.d.bal + approved.reduce((sum, proof) => sum + proof.bonus, 0))}</small></div>
+            <span className="wallet-hero-icon"><b>F</b></span>
+          </div>
+          <div className="quick-actions">
+            <button className="quick" type="button" onClick={() => document.getElementById('withdrawal-form')?.scrollIntoView({ behavior: 'smooth' })}><span>↗</span>{t('wd')}</button>
+            <button className="quick" type="button" onClick={() => document.getElementById('transaction-history')?.scrollIntoView({ behavior: 'smooth' })}><span>▤</span>{t('tx_history')}</button>
+          </div>
+          <div id="transaction-history"><TransactionHistory /></div>
+        </>
+      )}
+      <div className="dashboard-head dashboard-only">
         <div>
           <span className="dashboard-eyebrow">{t('r_d')}</span>
           <h1>{displayName ? `Bonjour, ${displayName} 👋` : 'Bonjour 👋'}</h1>
@@ -166,7 +185,7 @@ export default function PublisherView({ c }: { c: Ctx }) {
         <button className="dashboard-primary" type="button" onClick={() => c.go('f')}>＋ Voir les campagnes</button>
       </div>
 
-      <div className="dashboard-kpis">
+      <div className="dashboard-kpis dashboard-only">
         <article className="dashboard-kpi">
           <span className="dashboard-kpi-icon">F</span>
           <span>{t('bal')}</span>
@@ -193,7 +212,7 @@ export default function PublisherView({ c }: { c: Ctx }) {
         </article>
       </div>
 
-      <div className="dashboard-columns">
+      <div className="dashboard-columns dashboard-only">
         <section className="card dashboard-chart">
           <div className="dashboard-card-title"><h2>Évolution de vos gains</h2><span className="m">7 derniers jours</span></div>
           <svg viewBox="0 0 580 150" role="img" aria-label="Évolution des gains sur 7 jours">
@@ -221,16 +240,34 @@ export default function PublisherView({ c }: { c: Ctx }) {
         </section>
       </div>
 
-      <section className="card">
+      <section className="card dashboard-only dashboard-recommendations">
+        <div className="dashboard-card-title"><h2>{t('camps')}</h2><button className="s" type="button" onClick={() => c.go('f')}>{t('r_f')}</button></div>
+        {recommendedCampaigns.length === 0 && <p className="m">{t('none')}</p>}
+        <div className="campaign-list">
+          {recommendedCampaigns.map((campaign) => (
+            <div className="campaign-item" key={campaign.id}>
+              <div className="product-thumb"><b>{campaign.type === 'img' ? '▧' : campaign.type === 'vid' ? '▷' : '≡'}</b></div>
+              <div>
+                <strong>{campaign.title}</strong>
+                <div className="m">{t(campaign.type)} · {f(Math.max(0, campaign.budget - campaign.spent))} {t('rest')}</div>
+                <div className="progress"><span style={{ width: `${Math.min(100, Math.round((campaign.spent / campaign.budget) * 100))}%` }} /></div>
+              </div>
+              <button className="s on" type="button" onClick={() => c.go('f')}>{t('post')}</button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card dashboard-only">
         <h2>{t('daily_t')} · {Math.min(todayN, DAILY_GOAL)}/{DAILY_GOAL}</h2>
         <div className="bar" style={{ marginTop: 0 }}><i style={{ width: Math.min(100, Math.round((todayN / DAILY_GOAL) * 100)) + '%' }} /></div>
         <p className="m" style={{ margin: '8px 0 0' }}>{todayN >= DAILY_GOAL ? t('daily_done') : t('daily_b')} (+{f(DAILY_BONUS)})</p>
       </section>
 
-      <LevelCard dep={approved.length} />
+      <div className="dashboard-only"><LevelCard dep={approved.length} /></div>
 
       {sel !== null && (
-        <section className="card">
+        <section className="card dashboard-only">
           <h2>{t('proof')} · {title(sel)}</h2>
           <p className="m">{t('proofd')}</p>
           <label htmlFor="fl">{t('file')}</label>
@@ -240,7 +277,7 @@ export default function PublisherView({ c }: { c: Ctx }) {
         </section>
       )}
 
-      <section className="card">
+      <section className="card dashboard-only">
         <h2>{t('mine')}</h2>
         {my.length === 0 && <p className="m">{t('none')}</p>}
         {my.map((p, i) => (
@@ -259,10 +296,10 @@ export default function PublisherView({ c }: { c: Ctx }) {
         ))}
       </section>
 
-      <ReferralCard c={c} />
-      <Leaderboard />
+      <div className="dashboard-only"><ReferralCard c={c} /></div>
+      <div className="dashboard-only"><Leaderboard /></div>
 
-      <section className="card">
+      <section className="card wallet-only" id="withdrawal-form">
         <h2>{t('wd')}</h2>
         {networkError && <p className="err" role="alert">{networkError}</p>}
         <label htmlFor="withdraw-country">{t('country')}</label>
@@ -284,6 +321,6 @@ export default function PublisherView({ c }: { c: Ctx }) {
         <button className="p" disabled={withdrawing || c.d.bal < MIN_WITHDRAW || !withdrawNetwork || !!networkError} onClick={withdraw}>{withdrawing ? '…' : `${t('wdb')} ${f(c.d.bal)}`}</button>
         <p className="m">{t('saspay_payout_auto_note')}</p>
       </section>
-    </>
+    </div>
   );
 }

@@ -20,15 +20,18 @@ import LangSelect from './LangSelect';
 import OfflineSync from './OfflineSync';
 import ScrollEffects from './ScrollEffects';
 import LandingView from './LandingView';
+import TransactionHistory from './TransactionHistory';
+import PushToggle from './PushToggle';
 
 const EMPTY: Data = { bal: 0, walletBalance: 0, camps: [], proofs: [], wd: [], aP: [], aW: [], walletTopupsReview: [], favs: [], myReviews: [], ratings: {} };
+type WorkspacePage = 'dashboard' | 'feed' | 'advertiser' | 'campaigns' | 'wallet' | 'create' | 'admin' | 'profile' | 'notifications';
 
 export default function App() {
   const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [d, setD] = useState<Data>(EMPTY);
-  const [tab, setTab] = useState<Tab>('d');
+  const [page, setPage] = useState<WorkspacePage>('dashboard');
   const [sel, setSel] = useState<number | null>(null);
   const [recovery, setRecovery] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState('');
@@ -51,7 +54,7 @@ export default function App() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [tab]);
+  }, [page]);
 
   useEffect(() => {
     if (!configured) return;
@@ -114,7 +117,7 @@ export default function App() {
       aW,
       walletTopupsReview,
     });
-    if (prof?.role !== 'admin') setTab((x) => (x === 'm' ? 'f' : x));
+    if (prof?.role !== 'admin') setPage((current) => current === 'admin' ? 'dashboard' : current);
 
     if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
       const session = await sb.auth.getSession();
@@ -209,7 +212,25 @@ export default function App() {
   }, [user, d.favs, run, load]);
 
   const admin = profile?.role === 'admin';
-  const tabs: Tab[] = admin ? ['d', 'f', 'a', 'm', 'p'] : ['d', 'f', 'a', 'p'];
+  const workspaceItems: { id: WorkspacePage; icon: string; label: string }[] = [
+    { id: 'dashboard', icon: 'home', label: t('dash') },
+    { id: 'feed', icon: 'f', label: t('r_f') },
+    { id: 'advertiser', icon: 'a', label: t('r_a') },
+    { id: 'campaigns', icon: 'campaign', label: t('myc') },
+    { id: 'wallet', icon: 'wallet', label: t('wallet_title') },
+    { id: 'create', icon: 'plus', label: t('new') },
+    ...(admin ? [{ id: 'admin' as const, icon: 'm', label: t('r_m') }] : []),
+    { id: 'profile', icon: 'p', label: t('r_p') },
+  ];
+  const navigate = (next: WorkspacePage) => setPage(admin || next !== 'admin' ? next : 'dashboard');
+  const navigateTab = (next: Tab) => {
+    const destinations: Record<Tab, WorkspacePage> = {
+      d: 'dashboard', f: 'feed', a: 'advertiser', m: 'admin', p: 'profile',
+    };
+    navigate(destinations[next]);
+  };
+  const activeLabel = workspaceItems.find((item) => item.id === page)?.label
+    ?? (page === 'notifications' ? t('push_t') : t('profile'));
 
   let body: React.ReactNode;
   if (!user) body = (
@@ -230,11 +251,23 @@ export default function App() {
   );
   else if (!profile) body = <p className="m">…</p>;
   else {
-    const ctx: Ctx = { user, profile, d, reload, say, run, sel, pick: setSel, go: setTab, toggleFav };
+    const ctx: Ctx = { user, profile, d, reload, say, run, sel, pick: setSel, go: navigateTab, toggleFav };
     body = (
       <>
         <OfflineSync c={ctx} />
-        {tab === 'f' ? <FeedView c={ctx} /> : tab === 'd' ? <PublisherView c={ctx} /> : tab === 'a' ? <AdvertiserView c={ctx} /> : tab === 'p' ? <ProfileView c={ctx} logout={() => { run(async () => { await sb.auth.signOut(); }); }} /> : <AdminView c={ctx} />}
+        {page === 'feed' ? <FeedView c={ctx} />
+          : page === 'dashboard' ? <PublisherView c={ctx} view="dashboard" />
+            : page === 'wallet' ? <PublisherView c={ctx} view="wallet" />
+              : page === 'advertiser' ? <AdvertiserView c={ctx} view="overview" />
+                : page === 'campaigns' ? <AdvertiserView c={ctx} view="campaigns" />
+                  : page === 'create' ? <AdvertiserView c={ctx} view="create" />
+                    : page === 'profile' ? <ProfileView c={ctx} logout={() => { run(async () => { await sb.auth.signOut(); }); }} />
+                      : page === 'notifications' ? <section className="page-screen">
+                        <div className="page-head"><div><div className="eyebrow">{t('profile')}</div><h1>{t('push_t')}</h1><p className="sub">{t('tx_description')}</p></div></div>
+                        <PushToggle c={ctx} />
+                        <TransactionHistory />
+                      </section>
+                        : page === 'admin' && admin ? <AdminView c={ctx} /> : <PublisherView c={ctx} view="dashboard" />}
       </>
     );
   }
@@ -243,18 +276,25 @@ export default function App() {
     <>
       <header className={`app-header${user ? '' : ' app-header-guest'}`}>
         <div className="logo"><Image src="/brand-logo.png" alt="StatutPay" width={1513} height={405} priority /></div>
-        <nav className="desktop-nav" aria-label="Navigation principale">
-          {user && !recovery && tabs.map((r) => (
-            <button key={r} className={tab === r ? 'on' : ''} aria-current={tab === r ? 'page' : undefined} onClick={() => setTab(r)}>
-              <Icon n={r} /><span>{t('r_' + r)}</span>
-            </button>
-          ))}
-        </nav>
+        {user && !recovery && (
+          <>
+            <div className="workspace-label">{t('nav_workspace')}</div>
+            <nav className="desktop-nav" aria-label={t('navigation')}>
+              {workspaceItems.map((item) => (
+                <button key={item.id} className={page === item.id ? 'on' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}>
+                  <Icon n={item.icon} /><span>{item.label}</span>
+                </button>
+              ))}
+            </nav>
+          </>
+        )}
+        {user && !recovery && <div className="workspace-footer">{t('nav_footer')}</div>}
         <div className="hr">
           <InstallButton />
+          {user && !recovery && <button className="iconbtn" aria-label={t('push_t')} title={t('push_t')} onClick={() => navigate('notifications')}><Icon n="bell" /></button>}
           <button className="iconbtn" aria-label={t('help')} title={t('help')} onClick={() => setSheet('help')}><Icon n="help" /></button>
           {user && profile && (
-            <button className="iconbtn avbtn" aria-label={t('profile')} title={t('profile')} onClick={() => setTab('p')}>
+            <button className="iconbtn avbtn" aria-label={t('profile')} title={t('profile')} onClick={() => navigate('profile')}>
               {profile.avatar ? <span aria-hidden="true">{profile.avatar}</span> : <Icon n="user" />}
             </button>
           )}
@@ -264,7 +304,7 @@ export default function App() {
       <main className={user && !recovery ? 'app-main-auth' : ''}>
         {user && !recovery && (
           <div className="workspace-topbar" aria-label="Fil d’Ariane">
-            <div>StatutPay <span>/</span> <b>{tab === 'd' ? t('r_d') : tab === 'f' ? t('r_f') : tab === 'a' ? t('r_a') : tab === 'm' ? t('r_m') : t('profile')}</b></div>
+            <div>StatutPay <span>/</span> <b>{activeLabel}</b></div>
           </div>
         )}
         <ScrollEffects />
@@ -273,11 +313,16 @@ export default function App() {
       </main>
       {user && !recovery && (
         <nav className="mobile-nav" aria-label="Navigation principale">
-          {tabs.map((r) => (
-            <button key={r} className={tab === r ? 'on' : ''} aria-current={tab === r ? 'page' : undefined} onClick={() => setTab(r)}>
-              <Icon n={r} /><span>{t('r_' + r)}</span>
+          {workspaceItems.filter((item) => item.id !== 'admin').map((item) => (
+            <button key={item.id} className={page === item.id ? 'on' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}>
+              <Icon n={item.icon} /><span>{item.label}</span>
             </button>
           ))}
+          {admin && (
+            <button className={page === 'admin' ? 'on' : ''} aria-current={page === 'admin' ? 'page' : undefined} onClick={() => navigate('admin')}>
+              <Icon n="m" /><span>{t('r_m')}</span>
+            </button>
+          )}
         </nav>
       )}
       {sheet === 'help' && <HelpSheet profile={profile} onClose={() => setSheet(null)} />}

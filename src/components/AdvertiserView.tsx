@@ -26,7 +26,11 @@ function isHttpsUrl(value: string) {
   try { return new URL(value).protocol === 'https:'; } catch { return false; }
 }
 
-export default function AdvertiserView({ c }: { c: Ctx }) {
+export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
+  c: Ctx;
+  view?: 'overview' | 'campaigns' | 'create';
+  onNavigate?: (page: 'campaigns' | 'create') => void;
+}) {
   const { t, f } = useI18n();
   const [title, setTitle] = useState('');
   const [type, setType] = useState<CType>('img');
@@ -65,6 +69,10 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
   const walletUsed = !isAdmin && c.d.walletBalance >= total - used ? total - used : 0;
   const due = total - used - walletUsed;
   const mine = c.d.camps.filter((x) => x.owner === c.user.id);
+  const activeCampaigns = mine.filter((campaign) => campaign.status === 'active');
+  const totalBudget = mine.reduce((sum, campaign) => sum + campaign.budget, 0);
+  const totalSpent = mine.reduce((sum, campaign) => sum + campaign.spent, 0);
+  const remainingBudget = mine.reduce((sum, campaign) => sum + Math.max(0, campaign.budget - campaign.spent), 0);
   const titleOf = (id: number) => c.d.camps.find((x) => x.id === id)?.title ?? '#' + id;
 
   async function createAlphaPayCheckout(campaignId: number) {
@@ -231,8 +239,46 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
   }
 
   return (
-    <>
-      <section className="card">
+    <div className={`advertiser-view advertiser-view-${view}`}>
+      {view !== 'create' && (
+        <div className="page-head">
+          <div>
+            <div className="eyebrow">{view === 'campaigns' ? t('r_a') : t('r_a')}</div>
+            <h1>{view === 'campaigns' ? t('myc') : t('wallet_title')}</h1>
+            <p className="sub">{view === 'campaigns' ? t('profile_created_campaigns') : t('wallet_description')}</p>
+          </div>
+          <button className="p" type="button" onClick={() => onNavigate?.('create')}>{t('new')} ＋</button>
+        </div>
+      )}
+      {view === 'overview' && (
+        <section className="advertiser-overview">
+          <div className="dashboard-kpis">
+            <article className="dashboard-kpi"><span className="dashboard-kpi-icon">F</span><span>{t('wallet_title')}</span><b>{f(c.d.walletBalance)}</b><small>{t('wallet_description')}</small></article>
+            <article className="dashboard-kpi"><span className="dashboard-kpi-icon">▣</span><span>{t('k_camps')}</span><b>{activeCampaigns.length}</b><small>{t('st_active')}</small></article>
+            <article className="dashboard-kpi"><span className="dashboard-kpi-icon">◉</span><span>{t('spent')}</span><b>{f(totalSpent)}</b><small>{t('profile_total_views')}</small></article>
+            <article className="dashboard-kpi"><span className="dashboard-kpi-icon">◷</span><span>{t('rest')}</span><b>{f(remainingBudget)}</b><small>{f(totalBudget)}</small></article>
+          </div>
+          <section className="card">
+            <div className="dashboard-card-title"><h2>{t('myc')}</h2><button className="s" type="button" onClick={() => onNavigate?.('campaigns')}>{t('myc')}</button></div>
+            {mine.length === 0 && <p className="m">{t('none')}</p>}
+            <div className="campaign-list">
+              {mine.slice(0, 3).map((campaign) => (
+                <div className="campaign-item" key={campaign.id}>
+                  <div className="product-thumb">{campaign.type === 'img' ? '▧' : campaign.type === 'vid' ? '▷' : '≡'}</div>
+                  <div><strong>{campaign.title}</strong><div className="m">{t(campaign.type)} · {campaign.country ?? t('all_c')}</div><div className="progress"><span style={{ width: `${Math.min(100, Math.round((campaign.spent / campaign.budget) * 100))}%` }} /></div></div>
+                  <span className={'tag ' + (campaign.status === 'active' ? 'ok' : campaign.status === 'pending' ? 'w' : '')}>{t(`st_${campaign.status}`)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="card advertiser-financing">
+            <div className="dashboard-card-title"><h2>{t('wallet_title')}</h2><span className="tag ok">AlphaPay</span></div>
+            <p className="m">{t('wallet_description')}</p>
+            <button className="s on" type="button" onClick={() => document.getElementById('advertiser-wallet-topup')?.scrollIntoView({ behavior: 'smooth' })}>{t('wallet_topup_button')}</button>
+          </section>
+        </section>
+      )}
+      <section className="card advertiser-create-only">
         <h2>{t('credit')} · {f(credit)}</h2>
         <label htmlFor="pr">{t('promo_code')}</label>
         <div className="actions" style={{ flexWrap: 'nowrap' }}>
@@ -241,7 +287,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         </div>
       </section>
 
-      <form className="card" onSubmit={(e) => { e.preventDefault(); topup(); }}>
+      <form id="advertiser-wallet-topup" className="card advertiser-topup-only" onSubmit={(e) => { e.preventDefault(); topup(); }}>
         <h2>{t('wallet_title')} · {f(c.d.walletBalance)}</h2>
         <p className="m">{t('wallet_description')}</p>
         <label htmlFor="wallet-topup-amount">{t('wallet_topup_amount')}</label>
@@ -253,7 +299,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         </button>
       </form>
 
-      <form className="card" onSubmit={(e) => { e.preventDefault(); launch(); }}>
+      <form className="card advertiser-create-only" onSubmit={(e) => { e.preventDefault(); launch(); }}>
         <h1 style={{ fontSize: 24 }}>{t('new')}</h1>
         <label htmlFor="ti">{t('title')}</label>
         <input id="ti" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -319,7 +365,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
       </form>
 
       {toRate.length > 0 && (
-        <section className="card">
+        <section className="card advertiser-overview-only">
           <h2>{t('rate_list')}</h2>
           {toRate.map((x, i) => (
             <div className={'row' + (i === 0 ? ' first' : '')} key={x.proof_id}>
@@ -331,7 +377,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
         </section>
       )}
 
-      <section className="card">
+      <section className="card advertiser-campaign-list">
         <h2>{t('myc')}</h2>
         {mine.length === 0 && <p className="m">{t('none')}</p>}
         {mine.map((x, i) => {
@@ -358,7 +404,7 @@ export default function AdvertiserView({ c }: { c: Ctx }) {
                   <div className="bar"><i style={{ width: Math.round((x.spent / x.budget) * 100) + '%' }} /></div>
                   <button className="s" style={{ marginTop: 10 }} onClick={() => setReport(report === x.id ? null : x.id)}>{t('report')}</button>
                   {report === x.id && <ReportPanel id={x.id} />}
-                </>
+                </div>
               )}
             </div>
           );
