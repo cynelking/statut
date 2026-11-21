@@ -28,7 +28,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [d, setD] = useState<Data>(EMPTY);
-  const [tab, setTab] = useState<Tab>('f');
+  const [tab, setTab] = useState<Tab>('d');
   const [sel, setSel] = useState<number | null>(null);
   const [recovery, setRecovery] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState('');
@@ -241,33 +241,15 @@ export default function App() {
 
   return (
     <>
-      {user && !recovery && (
-        <aside className="desktop-sidebar">
-          <div className="sidebar-brand">
-            <div className="sidebar-mark">S</div>
-            <strong>Statut<i>Pay</i></strong>
-          </div>
-          <span className="sidebar-label">ESPACE DE TRAVAIL</span>
-          <nav className="sidebar-nav" aria-label="Navigation principale">
-            {tabs.map((r) => (
-              <button key={r} className={tab === r ? 'active' : ''} aria-current={tab === r ? 'page' : undefined} onClick={() => setTab(r)}>
-                <Icon n={r} />
-                <span>{t('r_' + r)}</span>
-              </button>
-            ))}
-          </nav>
-          <div className="sidebar-footer">
-            StatutPay 2.0<br />
-            La publicité qui récompense.
-          </div>
-        </aside>
-      )}
       <header className="app-header">
-        {user && !recovery ? (
-          <div className="topbar-crumb">StatutPay <span>/</span> <b>{t('r_' + tab)}</b></div>
-        ) : (
-          <div className="logo"><Image src="/brand-logo.png" alt="StatutPay" width={1513} height={405} priority /></div>
-        )}
+        <div className="logo"><Image src="/brand-logo.png" alt="StatutPay" width={1513} height={405} priority /></div>
+        <nav className="desktop-nav" aria-label="Navigation principale">
+          {user && !recovery && tabs.map((r) => (
+            <button key={r} className={tab === r ? 'on' : ''} aria-current={tab === r ? 'page' : undefined} onClick={() => setTab(r)}>
+              <Icon n={r} /><span>{t('r_' + r)}</span>
+            </button>
+          ))}
+        </nav>
         <div className="hr">
           <InstallButton />
           <button className="iconbtn" aria-label={t('help')} title={t('help')} onClick={() => setSheet('help')}><Icon n="help" /></button>

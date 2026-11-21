@@ -135,12 +135,90 @@ export default function PublisherView({ c }: { c: Ctx }) {
     });
   }
 
+  const displayName = c.profile.display_name?.trim() || c.profile.phone.replace(/^\+/, '');
+  const activeCampaigns = c.d.camps.filter((campaign) => campaign.status === 'active');
+  const completedCount = c.d.proofs.filter((proof) => proof.status === 'approved').length;
+  const recentProofs = [...my].sort((a, b) => Date.parse(b.created_at ?? '') - Date.parse(a.created_at ?? '')).slice(0, 3);
+  const chartValues = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    const day = date.toISOString().slice(0, 10);
+    return my
+      .filter((proof) => proof.status === 'approved' && proof.created_at?.slice(0, 10) === day)
+      .reduce((sum, proof) => sum + proof.views + proof.bonus, 0);
+  });
+  const chartMax = Math.max(1, ...chartValues);
+  const chartPoints = chartValues.map((value, index) => {
+    const x = 18 + index * 94;
+    const y = 128 - (value / chartMax) * 100;
+    return `${x},${y}`;
+  }).join(' ');
+
   return (
     <>
-      <div className="hero">
-        <span className="lb">{t('bal')}</span>
-        <b className="big">{f(c.d.bal)}</b>
-        <div className="mini"><span><b>{paidViews}</b> {t('views')}</span><span><b>{pending}</b> {t('pend')}</span></div>
+      <div className="dashboard-head">
+        <div>
+          <span className="dashboard-eyebrow">{t('r_d')}</span>
+          <h1>{displayName ? `Bonjour, ${displayName} 👋` : 'Bonjour 👋'}</h1>
+          <p className="m">Voici les performances de votre activité aujourd’hui.</p>
+        </div>
+        <button className="dashboard-primary" type="button" onClick={() => c.go('f')}>＋ Voir les campagnes</button>
+      </div>
+
+      <div className="dashboard-kpis">
+        <article className="dashboard-kpi">
+          <span className="dashboard-kpi-icon">F</span>
+          <span>{t('bal')}</span>
+          <b>{f(c.d.bal)}</b>
+          <small>Solde disponible</small>
+        </article>
+        <article className="dashboard-kpi">
+          <span className="dashboard-kpi-icon">◉</span>
+          <span>{t('views')}</span>
+          <b>{paidViews.toLocaleString()}</b>
+          <small>{pending} {t('pend')}</small>
+        </article>
+        <article className="dashboard-kpi">
+          <span className="dashboard-kpi-icon">▣</span>
+          <span>{t('camps')}</span>
+          <b>{activeCampaigns.length}</b>
+          <small>{completedCount} validations</small>
+        </article>
+        <article className="dashboard-kpi">
+          <span className="dashboard-kpi-icon">★</span>
+          <span>Votre progression</span>
+          <b>{Math.min(100, Math.round((approved.length / 20) * 100))}%</b>
+          <small>Niveau de confiance</small>
+        </article>
+      </div>
+
+      <div className="dashboard-columns">
+        <section className="card dashboard-chart">
+          <div className="dashboard-card-title"><h2>Évolution de vos gains</h2><span className="m">7 derniers jours</span></div>
+          <svg viewBox="0 0 580 150" role="img" aria-label="Évolution des gains sur 7 jours">
+            {[30, 65, 100, 135].map((y) => <line key={y} x1="0" x2="580" y1={y} y2={y} stroke="var(--line)" strokeWidth="1" />)}
+            {chartValues.length > 1 && (
+              <>
+                <polygon points={`18,140 ${chartPoints} 582,140`} fill="var(--brand)" opacity=".10" />
+                <polyline points={chartPoints} fill="none" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+              </>
+            )}
+          </svg>
+        </section>
+        <section className="card dashboard-activity">
+          <div className="dashboard-card-title"><h2>Activité récente</h2><button className="linkbtn" type="button" onClick={() => c.go('d')}>Tout voir</button></div>
+          {recentProofs.length === 0 && <p className="m">Aucune activité pour le moment.</p>}
+          {recentProofs.map((proof) => (
+            <div className="dashboard-activity-row" key={proof.id}>
+              <span className="dashboard-activity-icon">{proof.status === 'approved' ? '✓' : proof.status === 'rejected' ? '×' : '◷'}</span>
+              <div><b>{title(proof.campaign_id)}</b><small>{proof.status === 'approved' ? 'Preuve validée' : proof.status === 'rejected' ? 'Preuve refusée' : 'Preuve en attente'}</small></div>
+              <span className={'tag ' + (proof.status === 'approved' ? 'ok' : proof.status === 'rejected' ? 'bad' : 'w')}>
+                {proof.status === 'approved' ? `+${proof.views + proof.bonus} F` : proof.status}
+              </span>
+            </div>
+          ))}
+        </section>
       </div>
 
       <section className="card">
