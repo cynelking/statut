@@ -278,6 +278,11 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
           </section>
         </section>
       )}
+      {view === 'create' && (
+        <div className="page-head advertiser-create-only">
+          <div><div className="eyebrow">{t('r_a')}</div><h1>{t('new')}</h1><p className="sub">{t('configure_campaign')}</p></div>
+        </div>
+      )}
       <section className="card advertiser-create-only">
         <h2>{t('credit')} · {f(credit)}</h2>
         <label htmlFor="pr">{t('promo_code')}</label>
@@ -301,6 +306,11 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
 
       <form className="card advertiser-create-only" onSubmit={(e) => { e.preventDefault(); launch(); }}>
         <h1 style={{ fontSize: 24 }}>{t('new')}</h1>
+        <div className="steps" aria-label="Étapes de création">
+          <div className="step active"><b>1</b>{t('title')}</div><div className="step-line" />
+          <div className="step"><b>2</b>{t('target')}</div><div className="step-line" />
+          <div className="step"><b>3</b>{t('budget')}</div>
+        </div>
         <label htmlFor="ti">{t('title')}</label>
         <input id="ti" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} />
         <div className="grid2">

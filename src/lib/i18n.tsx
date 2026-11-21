@@ -17,6 +17,10 @@ const EXTRA_TEXT: Partial<Record<Lang, Record<string, string>>> = {
   fr: {
     admin_campaign_free: 'Campagne administrateur gratuite : aucun débit ni paiement AlphaPay ne sera nécessaire.',
     admin_campaign_created: 'Campagne administrateur créée et activée.',
+    nav_workspace: 'ESPACE DE TRAVAIL',
+    nav_footer: 'La publicité qui récompense.',
+    navigation: 'Navigation principale',
+    view_all: 'Voir tout',
     landing_eyebrow: 'Publicité et revenus via WhatsApp',
     landing_title: 'Les statuts WhatsApp deviennent une opportunité pour tous.',
     landing_intro: 'StatutPay met en relation les annonceurs qui veulent faire connaître leurs offres et les diffuseurs qui partagent des annonces en statut WhatsApp.',
@@ -218,6 +222,10 @@ const EXTRA_TEXT: Partial<Record<Lang, Record<string, string>>> = {
   en: {
     admin_campaign_free: 'Free admin campaign: no balance deduction or AlphaPay payment is required.',
     admin_campaign_created: 'Admin campaign created and activated.',
+    nav_workspace: 'WORKSPACE',
+    nav_footer: 'Advertising that rewards.',
+    navigation: 'Main navigation',
+    view_all: 'View all',
     landing_eyebrow: 'Advertising and earnings through WhatsApp',
     landing_title: 'WhatsApp Status becomes an opportunity for everyone.',
     landing_intro: 'StatutPay connects advertisers who want to promote their offers with publishers who share ads on WhatsApp Status.',

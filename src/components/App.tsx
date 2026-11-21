@@ -258,9 +258,9 @@ export default function App() {
         {page === 'feed' ? <FeedView c={ctx} />
           : page === 'dashboard' ? <PublisherView c={ctx} view="dashboard" />
             : page === 'wallet' ? <PublisherView c={ctx} view="wallet" />
-              : page === 'advertiser' ? <AdvertiserView c={ctx} view="overview" />
-                : page === 'campaigns' ? <AdvertiserView c={ctx} view="campaigns" />
-                  : page === 'create' ? <AdvertiserView c={ctx} view="create" />
+              : page === 'advertiser' ? <AdvertiserView c={ctx} view="overview" onNavigate={navigate} />
+                : page === 'campaigns' ? <AdvertiserView c={ctx} view="campaigns" onNavigate={navigate} />
+                  : page === 'create' ? <AdvertiserView c={ctx} view="create" onNavigate={navigate} />
                     : page === 'profile' ? <ProfileView c={ctx} logout={() => { run(async () => { await sb.auth.signOut(); }); }} />
                       : page === 'notifications' ? <section className="page-screen">
                         <div className="page-head"><div><div className="eyebrow">{t('profile')}</div><h1>{t('push_t')}</h1><p className="sub">{t('tx_description')}</p></div></div>
