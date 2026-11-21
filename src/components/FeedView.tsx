@@ -229,6 +229,7 @@ export default function FeedView({ c }: { c: Ctx }) {
       </div>
 
       {ads.length === 0 && <p className="card m">{t('none')}</p>}
+      {ads.length > 0 && <div className="campaign-grid">
       {ads.map((x) => {
         const left = x.budget - x.spent;
         const txt = x.content ?? '';
@@ -285,6 +286,7 @@ export default function FeedView({ c }: { c: Ctx }) {
           </article>
         );
       })}
+      </div>}
     </>
   );
 }
