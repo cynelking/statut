@@ -305,7 +305,6 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
       </form>
 
       <form className="card advertiser-create-only" onSubmit={(e) => { e.preventDefault(); launch(); }}>
-        <h1 style={{ fontSize: 24 }}>{t('new')}</h1>
         <div className="steps" aria-label="Étapes de création">
           <div className="step active"><b>1</b>{t('title')}</div><div className="step-line" />
           <div className="step"><b>2</b>{t('target')}</div><div className="step-line" />
@@ -414,7 +413,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
                   <div className="bar"><i style={{ width: Math.round((x.spent / x.budget) * 100) + '%' }} /></div>
                   <button className="s" style={{ marginTop: 10 }} onClick={() => setReport(report === x.id ? null : x.id)}>{t('report')}</button>
                   {report === x.id && <ReportPanel id={x.id} />}
-                </div>
+                </>
               )}
             </div>
           );

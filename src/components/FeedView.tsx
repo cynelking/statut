@@ -32,6 +32,8 @@ export default function FeedView({ c }: { c: Ctx }) {
   const { t, f, lang } = useI18n();
   const [fmt, setFmt] = useState<'all' | CType>('all');
   const [scope, setScope] = useState<'mine' | 'all' | 'fav'>('mine');
+  const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'recent' | 'remaining'>('recent');
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
   const [announcementsError, setAnnouncementsError] = useState(false);
@@ -45,7 +47,9 @@ export default function FeedView({ c }: { c: Ctx }) {
     x.status === 'active' && x.spent < x.budget && live(x)
     && (fmt === 'all' || x.type === fmt)
     && (scope === 'all' || (scope === 'mine' && eligible(x)) || (scope === 'fav' && favs.has(x.id))))
-    .sort((a, b) => Number(boosted(b)) - Number(boosted(a)) || b.id - a.id);
+    .filter((campaign) => !query.trim() || `${campaign.title} ${campaign.content ?? ''}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+    .sort((a, b) => Number(boosted(b)) - Number(boosted(a))
+      || (sortBy === 'remaining' ? (b.budget - b.spent) - (a.budget - a.spent) : b.id - a.id));
 
   useEffect(() => {
     let current = true;
@@ -217,18 +221,27 @@ export default function FeedView({ c }: { c: Ctx }) {
         </section>
       )}
 
-      <div className="chipsf" role="group">
+      <div className="feed-tools">
+        <input aria-label={t('feed_search')} placeholder={t('feed_search')} value={query} onChange={(event) => setQuery(event.target.value)} />
+        <select aria-label={t('feed_sort')} value={sortBy} onChange={(event) => setSortBy(event.target.value as 'recent' | 'remaining')}>
+          <option value="recent">{t('feed_sort_recent')}</option>
+          <option value="remaining">{t('feed_sort_remaining')}</option>
+        </select>
+      </div>
+      <div className="feed-filter-groups">
+      <div className="chipsf" role="group" aria-label={t('feed_scope')}>
         {(['mine', 'all', 'fav'] as const).map((k) => (
           <button key={k} className={'s' + (scope === k ? ' on' : '')} onClick={() => setScope(k)}>{t('sc_' + k)}</button>
         ))}
       </div>
-      <div className="chipsf" role="group">
+      <div className="chipsf" role="group" aria-label={t('feed_format')}>
         {(['all', 'img', 'vid', 'txt'] as const).map((k) => (
           <button key={k} className={'s' + (fmt === k ? ' on' : '')} onClick={() => setFmt(k)}>{k === 'all' ? t('f_all') : t(k)}</button>
         ))}
       </div>
+      </div>
 
-      {ads.length === 0 && <p className="card m">{t('none')}</p>}
+      {ads.length === 0 && <p className="card m">{query ? t('feed_no_match') : t('none')}</p>}
       <div className="feed-campaign-grid">
       {ads.map((x) => {
         const left = x.budget - x.spent;
