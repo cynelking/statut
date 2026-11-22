@@ -8,6 +8,35 @@ update public.proofs
 set base_reward = views
 where status = 'approved' and base_reward = 0;
 
+drop policy if exists pr_ins on public.proofs;
+create policy pr_ins on public.proofs
+for insert to authenticated
+with check (
+  user_id = auth.uid()
+  and status = 'pending'
+  and image_path is null
+  and final_image_path is null
+  and first_submitted_at is null
+  and final_submitted_at is null
+  and rejection_reason is null
+  and views = 0
+  and base_reward = 0
+  and bonus = 0
+  and posted_at between now() - interval '1 minute' and now() + interval '1 minute'
+  and exists (
+    select 1
+    from public.campaigns c
+    join public.profiles p on p.id = auth.uid()
+    where c.id = campaign_id
+      and c.owner <> auth.uid()
+      and c.status = 'active'
+      and c.budget - c.spent >= 3
+      and (c.country is null or c.country is not distinct from p.country)
+      and (c.starts_at is null or c.starts_at <= now())
+      and (c.ends_at is null or c.ends_at > now())
+  )
+);
+
 create or replace function public.start_proof(p_campaign_id bigint)
 returns bigint
 language plpgsql
