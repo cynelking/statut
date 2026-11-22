@@ -68,6 +68,8 @@ export default function App() {
   }, []);
 
   const load = useCallback(async (u: User) => {
+    const expiredProofs = await sb.rpc('expire_proofs');
+    if (expiredProofs.error) throw expiredProofs.error;
     const expired = await sb.rpc('expire_campaigns');
     if (expired.error) throw expired.error;
     const [p, bal, walletBalance, c, pr, w, fv, rt, mr] = await Promise.all([
@@ -96,10 +98,13 @@ export default function App() {
     let walletTopupsReview: Data['walletTopupsReview'] = [];
     if (prof?.role === 'admin') {
       const [a, b, topups] = await Promise.all([
-        sb.from('proofs').select('*,profiles(phone)').eq('status', 'pending'),
+        sb.from('proofs').select('*,profiles(phone)').eq('status', 'pending')
+          .not('image_path', 'is', null).or('posted_at.is.null,final_image_path.not.is.null'),
         sb.from('withdrawals').select('*,profiles(phone)').in('status', ['pending', 'processing']),
         sb.rpc('admin_wallet_topups_for_review'),
       ]);
+      if (a.error) throw a.error;
+      if (b.error) throw b.error;
       aP = (a.data ?? []) as unknown as Proof[];
       aW = (b.data ?? []) as unknown as Withdrawal[];
       if (topups.error) throw topups.error;

@@ -1,7 +1,7 @@
 # StatutPay — Next.js 14 + Supabase (PWA)
 
 ## Installation
-Après `migration_v15.sql`, appliquez aussi `migration_v16.sql` à `migration_v21.sql` dans l’ordre numérique. Pour une base déjà à jour jusqu’à la v20, appliquez uniquement `migration_v21.sql`.
+Après `migration_v15.sql`, appliquez aussi `migration_v16.sql` à `migration_v22.sql` dans l’ordre numérique. Pour une base déjà à jour jusqu’à la v21, appliquez uniquement `migration_v22.sql`.
 
 1. `npm install`
 2. Copiez `.env.local.example` en `.env.local` et renseignez l’URL et la clé **anon** (Supabase > Project Settings > API).
@@ -126,4 +126,10 @@ Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, 
 - Exécutez `supabase/migration_v15.sql` après la migration v14.
 - Dès qu’AlphaPay confirme un paiement réussi dans la devise attendue, la campagne passe automatiquement à l’état actif et apparaît dans le fil, sans approbation admin.
 - Les frais du prestataire peuvent réduire le montant net reçu; ils ne bloquent plus l’activation. Une devise inattendue reste signalée pour vérification.
+
+## Version 22 : preuves WhatsApp en deux temps
+- Exécutez `supabase/migration_v22.sql` après la migration v21.
+- Après avoir réellement publié le statut, le diffuseur confirme la publication dans l’application : cet instant définit H0. Il envoie une capture à partir de H+1, puis une seconde à partir de H+23, avant l’expiration du statut à H+24.
+- L’admin examine les deux captures ensemble et saisit les vues. La rémunération (et les bonus associés) n’est accordée qu’après validation de la preuve H+23. Si une étape manque à son échéance, le dossier est refusé sans rémunération.
+- Les preuves déjà déposées avant cette migration restent examinables selon l’ancien parcours. Les anciennes preuves encore en file hors ligne ne sont pas envoyées automatiquement : resoumettez-les avec le nouveau parcours ou supprimez-les explicitement depuis la bannière.
 

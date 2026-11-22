@@ -26,7 +26,12 @@ export type Tab = 'f' | 'd' | 'a' | 'm' | 'p';
 export type CType = 'img' | 'vid' | 'txt';
 export interface Profile { id: string; phone: string; country: string | null; role: 'user' | 'admin'; ref_code: string | null; display_name: string | null; avatar: string | null; credit: number }
 export interface Campaign { id: number; owner: string; title: string; type: CType; content: string | null; media_url: string | null; budget: number; spent: number; status: 'pending' | 'active' | 'done'; country: string | null; created_at?: string; boost_hours: number; boost_until: string | null; credit_used: number; wallet_used?: number; admin_created?: boolean; starts_at: string | null; ends_at: string | null; payment_provider?: 'alphapay' | 'wallet' | null; payment_status?: 'pending' | 'paid' | 'failed' | 'review' | null }
-export interface Proof { id: number; campaign_id: number; user_id: string; image_path: string; views: number; bonus: number; status: 'pending' | 'approved' | 'rejected'; created_at?: string; profiles?: { phone: string } | null }
+export interface Proof {
+  id: number; campaign_id: number; user_id: string; image_path: string | null;
+  final_image_path?: string | null; posted_at?: string | null; first_submitted_at?: string | null;
+  final_submitted_at?: string | null; rejection_reason?: string | null;
+  views: number; bonus: number; status: 'pending' | 'approved' | 'rejected'; created_at?: string; profiles?: { phone: string } | null
+}
 export interface Withdrawal { id: number; user_id: string; amount: number; fee?: number; payout_amount?: number; operator: string; status: 'pending' | 'processing' | 'paid' | 'failed'; recipient_country?: string | null; recipient_network?: string | null; recipient_phone?: string | null; saspay_payout_id?: string | null; created_at?: string; profiles?: { phone: string } | null }
 export type TransactionKind = 'earning' | 'level_bonus' | 'referral_bonus' | 'daily_bonus' | 'promo_credit' | 'credit_used' | 'credit_refund' | 'wallet_topup' | 'wallet_used' | 'wallet_refund' | 'withdrawal' | 'proof_status';
 export type TransactionStatus = 'approved' | 'pending' | 'processing' | 'rejected' | 'paid' | 'failed' | 'credited' | 'used' | 'refunded';

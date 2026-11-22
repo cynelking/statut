@@ -192,7 +192,7 @@ export default function FeedView({ c }: { c: Ctx }) {
           <span className="scene-spark scene-spark-one">✦</span>
           <span className="scene-spark scene-spark-two">✦</span>
         </div>
-        <div className="how"><div><b>1</b>{t('how1')}</div><div><b>2</b>{t('how2')}</div><div><b>3</b>{t('how3')}</div></div>
+        <div className="how"><div><b>1</b>{t('how1')}</div><div><b>2</b>{t('how2')}</div><div><b>3</b>{t('proof_stages_how')}</div></div>
       </section>
 
       <PushToggle c={c} />

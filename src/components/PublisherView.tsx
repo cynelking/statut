@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { sb } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
-import { Ctx, DAILY_BONUS, DAILY_GOAL, MIN_WITHDRAW, withdrawalFee } from '@/lib/types';
+import { Ctx, DAILY_BONUS, DAILY_GOAL, MIN_WITHDRAW, Proof, withdrawalFee } from '@/lib/types';
 import Leaderboard from './Leaderboard';
 import ReferralCard from './ReferralCard';
 import LevelCard from './LevelCard';
@@ -14,6 +14,8 @@ import TransactionHistory from './TransactionHistory';
 export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?: 'dashboard' | 'wallet' }) {
   const { t, f } = useI18n();
   const [file, setFile] = useState<File | null>(null);
+  const [fileTarget, setFileTarget] = useState<{ proofId: number; stage: 'h1' | 'h23'; createdAt: number } | null>(null);
+  const [clock, setClock] = useState(Date.now());
   const [payCountries, setPayCountries] = useState<AlphaPayCountry[]>([]);
   const [payNetworks, setPayNetworks] = useState<AlphaPayNetwork[]>([]);
   const [withdrawCountry, setWithdrawCountry] = useState(COUNTRY_CODES[c.profile.country || ''] || '');
@@ -39,6 +41,11 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
   );
   const withdrawalFeeAmount = withdrawalFee(c.d.bal);
   const payoutAmount = Math.max(0, c.d.bal - withdrawalFeeAmount);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (view !== 'wallet') return;
@@ -70,23 +77,47 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
     return () => { active = false; };
   }, [c.profile.country, view]);
 
-  function sendProof() {
+  function startProof() {
     c.run(async () => {
-      if (!file || sel === null || !file.type.startsWith('image/') || file.size > 5 * 1048576) throw new Error(t('nofile'));
+      if (sel === null) throw new Error(t('proof_campaign_missing'));
+      const result = await sb.rpc('start_proof', { p_campaign_id: sel });
+      if (result.error) throw result.error;
+      c.pick(null); setFile(null); setFileTarget(null);
+      await c.reload();
+      c.say(t('proof_started'));
+    });
+  }
+  function sendProof(proof: Proof, stage: 'h1' | 'h23') {
+    c.run(async () => {
+      if (!file || !fileTarget || fileTarget.proofId !== proof.id || fileTarget.stage !== stage
+        || !file.type.startsWith('image/') || file.size > 5 * 1048576) throw new Error(t('nofile'));
+      const submittedFile = file;
+      const createdAt = fileTarget.createdAt;
       const queue = async () => {
-        await queueProof({ userId: c.user.id, campaignId: sel, name: file.name, type: file.type, blob: file, createdAt: Date.now() });
-        c.pick(null); setFile(null); c.say(t('q_saved'));
+        await queueProof({
+          userId: c.user.id, campaignId: proof.campaign_id, proofId: proof.id, stage,
+          name: submittedFile.name, type: submittedFile.type, blob: submittedFile, createdAt,
+        });
+        setFile(null);
+        setFileTarget(null);
+        c.say(t('q_saved'));
       };
       if (!navigator.onLine) return queue();
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const path = `${c.user.id}/${sel}-${Date.now()}.${ext}`;
-      const up = await sb.storage.from('proofs').upload(path, file, { contentType: file.type });
-      if (up.error) { if (isNet(up.error)) return queue(); throw up.error; }
-      const ins = await sb.from('proofs').insert({ campaign_id: sel, user_id: c.user.id, image_path: path });
-      if (ins.error) { if (isNet(ins.error)) return queue(); throw ins.error; }
-      c.pick(null); setFile(null);
+      const ext = (submittedFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const path = `${c.user.id}/${proof.id}-${stage}-${createdAt}.${ext}`;
+      const up = await sb.storage.from('proofs').upload(path, submittedFile, { contentType: submittedFile.type });
+      if (up.error) {
+        if (isNet(up.error)) return queue();
+        if (!/exists|duplicate/i.test(up.error.message)) throw up.error;
+      }
+      const submitted = await sb.rpc('submit_proof_stage', {
+        p_proof_id: proof.id, p_stage: stage, p_image_path: path,
+      });
+      if (submitted.error) { if (isNet(submitted.error)) return queue(); throw submitted.error; }
+      setFile(null);
+      setFileTarget(null);
       await c.reload();
-      c.say(t('sent'));
+      c.say(t(stage === 'h1' ? 'proof_h1_sent' : 'proof_h23_sent'));
     });
   }
   function withdraw() {
@@ -272,10 +303,8 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
       {sel !== null && (
         <section className="card dashboard-only">
           <h2>{t('proof')} · {title(sel)}</h2>
-          <p className="m">{t('proofd')}</p>
-          <label htmlFor="fl">{t('file')}</label>
-          <input id="fl" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          <button className="p" onClick={sendProof}>{t('send')}</button>
+          <p className="m">{t('proof_start_hint')}</p>
+          <button className="p" onClick={startProof}>{t('proof_start_button')}</button>
           <button className="s" style={{ marginTop: 10 }} onClick={() => c.pick(null)}>{t('ib_no')}</button>
         </section>
       )}
@@ -285,14 +314,66 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
         {my.length === 0 && <p className="m">{t('none')}</p>}
         {my.map((p, i) => (
           <div className={'row' + (i === 0 ? ' first' : '')} key={p.id}>
-            <span>{title(p.campaign_id)}</span>
-            <div className="actions">
-              {p.status === 'approved' && !reviewed.has(p.id) && (
-                <button className="s" onClick={() => setRating(rating === p.id ? null : p.id)}>★ {t('rate_adv')}</button>
+            <div className="proof-submission">
+              <b>{title(p.campaign_id)}</b>
+              {p.posted_at && <small className="m">{t('proof_posted_at')} · {new Date(p.posted_at).toLocaleString()}</small>}
+              {p.posted_at && p.status === 'pending' ? (() => {
+                const postedAt = Date.parse(p.posted_at || '');
+                const h1At = postedAt + 60 * 60 * 1000;
+                const h23At = postedAt + 23 * 60 * 60 * 1000;
+                const expiresAt = postedAt + 24 * 60 * 60 * 1000;
+                const remaining = (target: number) => {
+                  const minutes = Math.max(0, Math.ceil((target - clock) / 60_000));
+                  return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
+                };
+                const stage = (key: 'h1' | 'h23', label: string, imagePath: string | null, availableAt: number, deadline: number, requiresFirst: boolean) => {
+                  const elapsed = clock >= deadline;
+                  const available = clock >= availableAt && !elapsed;
+                  const stageExpired = elapsed || (requiresFirst && !p.image_path && clock >= h23At);
+                  return (
+                    <div className="proof-stage" key={key}>
+                      <b>{label}</b>
+                      {imagePath
+                        ? <span className="tag ok">{t('proof_uploaded')}</span>
+                        : stageExpired
+                          ? <span className="tag bad">{t('proof_expired_stage')}</span>
+                          : !available
+                            ? <small className="m">{t('proof_available_in')} {remaining(availableAt)}</small>
+                            : requiresFirst && !p.image_path
+                              ? <small className="m">{t('proof_h1_required')}</small>
+                              : <>
+                                <label htmlFor={`proof-${key}-${p.id}`}>{t('file')}</label>
+                                <input id={`proof-${key}-${p.id}`} type="file" accept="image/*" onChange={(event) => {
+                                  setFile(event.target.files?.[0] ?? null);
+                                  setFileTarget({ proofId: p.id, stage: key, createdAt: Date.now() });
+                                }} />
+                                <button className="s" type="button"
+                                  disabled={!file || fileTarget?.proofId !== p.id || fileTarget?.stage !== key}
+                                  onClick={() => sendProof(p, key)}>{t('send')}</button>
+                              </>
+                      }
+                    </div>
+                  );
+                };
+                return (
+                  <div className="proof-timeline">
+                    {stage('h1', t('proof_h1_title'), p.image_path, h1At, h23At, false)}
+                    {stage('h23', t('proof_h23_title'), p.final_image_path ?? null, h23At, expiresAt, true)}
+                    {p.final_image_path && <small className="m">{t('proof_waiting_review')}</small>}
+                  </div>
+                );
+              })() : (
+                <div className="actions">
+                  {p.status === 'approved' && !reviewed.has(p.id) && (
+                    <button className="s" onClick={() => setRating(rating === p.id ? null : p.id)}>★ {t('rate_adv')}</button>
+                  )}
+                  <span className={'tag ' + (p.status === 'approved' ? 'ok' : p.status === 'rejected' ? 'bad' : 'w')}>
+                    {p.status === 'approved' ? `${t('ap')} · ${p.views + p.bonus} F`
+                      : p.rejection_reason === 'deadline' ? t('proof_deadline_missed')
+                        : p.status === 'rejected' ? t('rj') : t('pd')}
+                  </span>
+                </div>
               )}
-              <span className={'tag ' + (p.status === 'approved' ? 'ok' : p.status === 'rejected' ? 'bad' : 'w')}>
-                {p.status === 'approved' ? `${t('ap')} · ${p.views + p.bonus} F` : p.status === 'rejected' ? t('rj') : t('pd')}
-              </span>
             </div>
             {rating === p.id && <RateForm title={`${t('rate_adv')} · ${title(p.campaign_id)}`} onSubmit={(s, cm) => rate(p.id, s, cm)} onCancel={() => setRating(null)} />}
           </div>

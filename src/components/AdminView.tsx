@@ -218,13 +218,19 @@ export default function AdminView({ c }: { c: Ctx }) {
 
           <section className="card">
             <h2>{t('queue')}</h2>
-            <p className="note">{t('adminnote')}</p>
+            <p className="note">{t('adminnote_two')}</p>
             {aP.length === 0 && <p className="m">{t('none')}</p>}
             {aP.map((p) => (
               <div className="row" key={p.id}>
-                <div><b>{p.profiles?.phone}</b><div className="m">{title(p.campaign_id)}</div></div>
+                <div className="proof-submission">
+                  <b>{p.profiles?.phone}</b>
+                  <div className="m">{title(p.campaign_id)}{p.posted_at ? ` · ${t('proof_posted_at')} ${new Date(p.posted_at).toLocaleString()}` : ` · ${t('proof_legacy')}`}</div>
+                  {p.first_submitted_at && <small className="m">{t('proof_h1_title')} · {new Date(p.first_submitted_at).toLocaleString()}</small>}
+                  {p.final_submitted_at && <small className="m">{t('proof_h23_title')} · {new Date(p.final_submitted_at).toLocaleString()}</small>}
+                </div>
                 <div className="actions">
-                  <button className="s" onClick={() => seeProof(p.image_path)}>{t('see')}</button>
+                  {p.image_path && <button className="s" onClick={() => seeProof(p.image_path!)}>{p.posted_at ? t('proof_h1_title') : t('see')}</button>}
+                  {p.final_image_path && <button className="s" onClick={() => seeProof(p.final_image_path!)}>{t('proof_h23_title')}</button>}
                   <input inputMode="numeric" placeholder={t('nv')} aria-label={t('nv')} value={views[p.id] ?? ''} onChange={(e) => setViews({ ...views, [p.id]: e.target.value.replace(/\D/g, '') })} />
                   <button className="s" onClick={() => review(p.id, true)}>{t('ok')}</button>
                   <button className="s" onClick={() => review(p.id, false)}>{t('no')}</button>

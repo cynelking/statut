@@ -3,7 +3,10 @@ import { sb } from './supabase';
 const DB = 'statutpay';
 const ST = 'proofs';
 
-export interface Queued { id?: number; userId: string; campaignId: number; name: string; type: string; blob: Blob; createdAt: number }
+export interface Queued {
+  id?: number; userId: string; campaignId: number; name: string; type: string; blob: Blob; createdAt: number;
+  proofId?: number; stage?: 'h1' | 'h23';
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
@@ -36,6 +39,14 @@ export async function listQueue(userId: string): Promise<Queued[]> {
   return all.filter((x) => x.userId === userId);
 }
 
+export async function discardLegacyQueue(userId: string): Promise<number> {
+  const legacy = (await listQueue(userId)).filter((item) => item.proofId === undefined || !item.stage);
+  for (const item of legacy) {
+    if (item.id !== undefined) await removeQueued(item.id);
+  }
+  return legacy.length;
+}
+
 async function removeQueued(id: number): Promise<void> {
   await tx('readwrite', (s) => s.delete(id));
   window.dispatchEvent(new Event('queue-changed'));
@@ -45,15 +56,23 @@ async function removeQueued(id: number): Promise<void> {
 export async function flushQueue(userId: string): Promise<number> {
   let sent = 0;
   for (const it of await listQueue(userId)) {
-    const ext = (it.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const path = `${userId}/${it.campaignId}-${it.createdAt}.${ext}`;
-    const up = await sb.storage.from('proofs').upload(path, it.blob, { contentType: it.type });
-    if (up.error && isNet(up.error)) break;
-    if (up.error && !/exists|duplicate/i.test(up.error.message)) { await removeQueued(it.id!); continue; }
-    const ins = await sb.from('proofs').insert({ campaign_id: it.campaignId, user_id: userId, image_path: path });
-    if (ins.error && isNet(ins.error)) break;
-    await removeQueued(it.id!);
-    if (!ins.error) sent++;
+    if (it.proofId !== undefined && it.stage) {
+      const ext = (it.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const path = `${userId}/${it.proofId}-${it.stage}-${it.createdAt}.${ext}`;
+      const up = await sb.storage.from('proofs').upload(path, it.blob, { contentType: it.type });
+      if (up.error && isNet(up.error)) break;
+      if (up.error && !/exists|duplicate/i.test(up.error.message)) throw up.error;
+      const submitted = await sb.rpc('submit_proof_stage', {
+        p_proof_id: it.proofId, p_stage: it.stage, p_image_path: path,
+      });
+      if (submitted.error && isNet(submitted.error)) break;
+      if (submitted.error) throw submitted.error;
+      await removeQueued(it.id!);
+      sent++;
+      continue;
+    }
+
+    continue;
   }
   return sent;
 }
