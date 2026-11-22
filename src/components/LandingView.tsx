@@ -1,6 +1,7 @@
 'use client';
 import Image from 'next/image';
 import { useI18n } from '@/lib/i18n';
+import { VIEW_RATE } from '@/lib/types';
 import { Icon } from './ui';
 
 export default function LandingView() {
@@ -18,7 +19,7 @@ export default function LandingView() {
             <a className="landing-secondary" href="#how">{t('landing_how')}</a>
           </div>
           <div className="landing-highlights" role="group" aria-label={t('landing_highlights')}>
-            <span><b>1 F</b> {t('landing_per_view')}</span>
+            <span><b>{VIEW_RATE} F</b> {t('landing_per_view')}</span>
             <span><b>200 F</b> {t('landing_min_withdrawal')}</span>
           </div>
         </div>

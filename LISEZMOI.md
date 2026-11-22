@@ -72,7 +72,7 @@ Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, 
 ## Version 3 : nouveautés
 - **Codes promo et crédit offert** : l'admin crée des codes (onglet Admin > Gestion > Codes promo). L'annonceur les saisit dans son onglet (un seul code par compte). Le crédit réduit le montant à payer ; s'il couvre tout, la campagne est activée automatiquement. Exemple de code de bienvenue : voir la fin de `migration_v3.sql`.
 - **Campagnes boostées** : choisissez 24 h (500 F), 48 h (1 000 F) ou 7 jours (3 500 F) en tête du feed, avec l'étiquette « Sponsorisé ». Le compte à rebours démarre à l'activation.
-- **Niveaux** : Bronze, Argent (5 validations, 80 % de réussite, +5 %), Or (20 validations, 90 %, +10 %). Le bonus est payé par la plateforme, en plus des 1 F par vue.
+- **Niveaux** : Bronze, Argent (5 validations, 80 % de réussite, +5 %), Or (20 validations, 90 %, +10 %). Le bonus est payé par la plateforme, en plus des 3 F par vue.
 - **Avis** : après une preuve validée, le diffuseur note l'annonceur et l'annonceur note le diffuseur (1 à 5 étoiles + commentaire). La note de l'annonceur s'affiche dans le feed.
 - **Défi du jour** : 3 preuves soumises le même jour ; +50 F versés automatiquement quand 3 preuves du jour sont validées.
 - **Rapport de campagne** : vues livrées, diffuseurs, moyenne, preuves en attente/refusées et graphique 14 jours (bouton « Rapport »).

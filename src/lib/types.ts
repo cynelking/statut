@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js';
 export const ADMIN = '+22896292039';
 export const ADMIN_LINK = 'https://wa.me/22896292039';
 export const FEE = 500;
+export const VIEW_RATE = 3;
 export const BOOST_FEES: Record<number, number> = { 24: 500, 48: 1000, 168: 3500 };
 export const BOOST_OPTIONS = [24, 48, 168] as const;
 export const boostFee = (hours: number) => BOOST_FEES[hours] ?? 0;
@@ -30,7 +31,7 @@ export interface Proof {
   id: number; campaign_id: number; user_id: string; image_path: string | null;
   final_image_path?: string | null; posted_at?: string | null; first_submitted_at?: string | null;
   final_submitted_at?: string | null; rejection_reason?: string | null;
-  views: number; bonus: number; status: 'pending' | 'approved' | 'rejected'; created_at?: string; profiles?: { phone: string } | null
+  views: number; base_reward?: number; bonus: number; status: 'pending' | 'approved' | 'rejected'; created_at?: string; profiles?: { phone: string } | null
 }
 export interface Withdrawal { id: number; user_id: string; amount: number; fee?: number; payout_amount?: number; operator: string; status: 'pending' | 'processing' | 'paid' | 'failed'; recipient_country?: string | null; recipient_network?: string | null; recipient_phone?: string | null; saspay_payout_id?: string | null; created_at?: string; profiles?: { phone: string } | null }
 export type TransactionKind = 'earning' | 'level_bonus' | 'referral_bonus' | 'daily_bonus' | 'promo_credit' | 'credit_used' | 'credit_refund' | 'wallet_topup' | 'wallet_used' | 'wallet_refund' | 'withdrawal' | 'proof_status';

@@ -182,7 +182,7 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
     const day = date.toISOString().slice(0, 10);
     return my
       .filter((proof) => proof.status === 'approved' && proof.created_at?.slice(0, 10) === day)
-      .reduce((sum, proof) => sum + proof.views + proof.bonus, 0);
+      .reduce((sum, proof) => sum + (proof.base_reward ?? proof.views) + proof.bonus, 0);
   });
   const chartMax = Math.max(1, ...chartValues);
   const chartPoints = chartValues.map((value, index) => {
@@ -267,7 +267,7 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
               <span className="dashboard-activity-icon">{proof.status === 'approved' ? '✓' : proof.status === 'rejected' ? '×' : '◷'}</span>
               <div><b>{title(proof.campaign_id)}</b><small>{proof.status === 'approved' ? 'Preuve validée' : proof.status === 'rejected' ? 'Preuve refusée' : 'Preuve en attente'}</small></div>
               <span className={'tag ' + (proof.status === 'approved' ? 'ok' : proof.status === 'rejected' ? 'bad' : 'w')}>
-                {proof.status === 'approved' ? `+${proof.views + proof.bonus} F` : proof.status}
+                {proof.status === 'approved' ? `+${(proof.base_reward ?? proof.views) + proof.bonus} F` : proof.status}
               </span>
             </div>
           ))}
@@ -368,7 +368,7 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
                     <button className="s" onClick={() => setRating(rating === p.id ? null : p.id)}>★ {t('rate_adv')}</button>
                   )}
                   <span className={'tag ' + (p.status === 'approved' ? 'ok' : p.status === 'rejected' ? 'bad' : 'w')}>
-                    {p.status === 'approved' ? `${t('ap')} · ${p.views + p.bonus} F`
+                    {p.status === 'approved' ? `${t('ap')} · ${(p.base_reward ?? p.views) + p.bonus} F`
                       : p.rejection_reason === 'deadline' ? t('proof_deadline_missed')
                         : p.status === 'rejected' ? t('rj') : t('pd')}
                   </span>

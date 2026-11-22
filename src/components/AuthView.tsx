@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { sb } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
-import { ADMIN, ADMIN_LINK, COUNTRIES } from '@/lib/types';
+import { ADMIN, ADMIN_LINK, COUNTRIES, VIEW_RATE } from '@/lib/types';
 import { Icon } from './ui';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -119,7 +119,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
           <div className="hero">
             <h1>{t('join')}</h1>
             <p>{t('join_s')}</p>
-            <div className="chips"><span>1 F / {t('view1')}</span><span>200 F min.</span><span>Mobile Money</span></div>
+            <div className="chips"><span>{VIEW_RATE} F / {t('view1')}</span><span>200 F min.</span><span>Mobile Money</span></div>
           </div>
           <section className="card auth-welcome">
             <h2>{t('auth_choose')}</h2>
@@ -145,7 +145,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
             <button type="button" className="auth-back" onClick={() => setMode('welcome')}>‹ {t('auth_back')}</button>
             <h1>{mode === 'forgot' ? t('reset_t') : t(su ? 'signup' : 'login')}</h1>
             <p>{mode === 'signup' ? t('join_s') : mode === 'login' ? t('auth_login_hint') : t('reset_b')}</p>
-            {su && <div className="chips"><span>1 F / {t('view1')}</span><span>200 F min.</span><span>Mobile Money</span></div>}
+            {su && <div className="chips"><span>{VIEW_RATE} F / {t('view1')}</span><span>200 F min.</span><span>Mobile Money</span></div>}
           </div>
           <form className="card" onSubmit={(e) => { e.preventDefault(); submit(); }}>
             <label htmlFor="em">{t('email')}</label>

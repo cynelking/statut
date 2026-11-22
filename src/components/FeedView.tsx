@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useI18n } from '@/lib/i18n';
-import type { CType, Campaign, Ctx } from '@/lib/types';
+import { VIEW_RATE, type CType, type Campaign, type Ctx } from '@/lib/types';
 import { Icon } from './ui';
 import PushToggle from './PushToggle';
 import { sb } from '@/lib/supabase';
@@ -44,7 +44,7 @@ export default function FeedView({ c }: { c: Ctx }) {
   const boosted = (x: Campaign) => x.boost_hours > 0 && !!x.boost_until && Date.parse(x.boost_until) > now;
   const live = (x: Campaign) => (!x.starts_at || Date.parse(x.starts_at) <= now) && (!x.ends_at || Date.parse(x.ends_at) > now);
   const ads = c.d.camps.filter((x) =>
-    x.status === 'active' && x.spent < x.budget && live(x)
+    x.status === 'active' && x.budget - x.spent >= VIEW_RATE && live(x)
     && (fmt === 'all' || x.type === fmt)
     && (scope === 'all' || (scope === 'mine' && eligible(x)) || (scope === 'fav' && favs.has(x.id))))
     .filter((campaign) => !query.trim() || `${campaign.title} ${campaign.content ?? ''}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
@@ -180,7 +180,7 @@ export default function FeedView({ c }: { c: Ctx }) {
           </div>
           <div className="scene-ad">
             <small>ANNONCE ACTIVE</small>
-            <b>+ 1 F / vue</b>
+            <b>+ {VIEW_RATE} F / vue</b>
             <span><i />Campagne en cours</span>
           </div>
           <span className="scene-coin scene-coin-one">F</span>
@@ -245,6 +245,7 @@ export default function FeedView({ c }: { c: Ctx }) {
       <div className="feed-campaign-grid">
       {ads.map((x) => {
         const left = x.budget - x.spent;
+        const possibleViews = Math.floor(left / VIEW_RATE);
         const txt = x.content ?? '';
         const fav = favs.has(x.id);
         const ok = eligible(x);
@@ -276,7 +277,7 @@ export default function FeedView({ c }: { c: Ctx }) {
               <video className="ad-media" src={x.media_url} controls playsInline preload="metadata" />
             )}
             <div className="bar"><i style={{ width: Math.round((x.spent / x.budget) * 100) + '%' }} /></div>
-            <div className="m">{t('rest')} {f(left)} · {left.toLocaleString()} {t('views_max')}</div>
+            <div className="m">{t('rest')} {f(left)} · {possibleViews.toLocaleString()} {t('views_max')}</div>
             <div className="actions">
               <span className="actions">
                 <span className="tag ok">{t('earn')}</span>

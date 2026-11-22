@@ -12,6 +12,7 @@ const BASE: Record<'fr' | 'en', Record<string, string>> = {
 };
 
 const T: Record<Lang, Record<string, string>> = { ...BASE, pt: PT, ee: EE, gej: GEJ };
+const PER_VIEW_TEXT_KEYS = new Set(['join_s', 'feed_s', 'earn']);
 
 const EXTRA_TEXT: Partial<Record<Lang, Record<string, string>>> = {
   fr: {
@@ -724,7 +725,10 @@ export function I18n({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => { document.documentElement.lang = lang; }, [lang]);
   const setLang = (l: Lang) => { setLangState(l); localStorage.setItem('lang', l); };
-  const t = (k: string) => T[lang][k] || EXTRA_TEXT[lang]?.[k] || T.fr[k] || EXTRA_TEXT.fr?.[k] || k;
+  const t = (k: string) => {
+    const text = T[lang][k] || EXTRA_TEXT[lang]?.[k] || T.fr[k] || EXTRA_TEXT.fr?.[k] || k;
+    return PER_VIEW_TEXT_KEYS.has(k) ? text.replace(/\b1 F\b/g, '3 F') : text;
+  };
   const f = (n: number) => Number(n).toLocaleString(lang === 'en' ? 'en-US' : lang === 'pt' ? 'pt-PT' : 'fr-FR') + ' F';
   return <Ctx.Provider value={{ lang, setLang, t, f }}>{children}</Ctx.Provider>;
 }

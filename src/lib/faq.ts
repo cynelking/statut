@@ -1,6 +1,6 @@
 export const FAQ: Record<string, { q: string; a: string }[]> = {
   fr: [
-    { q: 'Comment je gagne de l’argent ?', a: 'Choisissez une annonce dans l’onglet Annonces, copiez-la et publiez-la en statut WhatsApp. Après 24 h, envoyez la capture d’écran de vos vues. Chaque vue validée vous rapporte 1 F.' },
+    { q: 'Comment je gagne de l’argent ?', a: 'Choisissez une annonce dans l’onglet Annonces, copiez-la et publiez-la en statut WhatsApp. Envoyez les captures H+1 et H+23 de vos vues. Chaque vue validée vous rapporte 3 F.' },
     { q: 'Pourquoi enregistrer le numéro de l’admin ?', a: 'Il nous permet de voir vos statuts pour vérifier qu’ils sont bien publiés et éviter la fraude. Votre statut doit être visible par vos contacts.' },
     { q: 'Quand suis-je payé ?', a: 'Après validation de votre capture par l’admin, le montant est ajouté à votre solde. Vous pouvez retirer dès 200 F par Mobile Money.' },
     { q: 'Pourquoi ma preuve a-t-elle été refusée ?', a: 'Capture illisible, date non visible, statut supprimé trop tôt ou nombre de vues non conforme. Refaites une capture claire avec la date visible.' },
@@ -11,7 +11,7 @@ export const FAQ: Record<string, { q: string; a: string }[]> = {
     { q: 'J’ai un code promo, où le saisir ?', a: 'Dans l’onglet Annonceur, section Crédit. Le crédit offert réduit le montant à payer pour votre campagne.' },
   ],
   en: [
-    { q: 'How do I earn money?', a: 'Pick an ad in the Ads tab, copy it and post it on your WhatsApp status. After 24 h, send a screenshot of your views. Every approved view earns you 1 F.' },
+    { q: 'How do I earn money?', a: 'Pick an ad in the Ads tab, copy it and post it on your WhatsApp status. Submit screenshots at H+1 and H+23. Every approved view earns you 3 F.' },
     { q: 'Why save the admin’s number?', a: 'It lets us view your statuses to check they are really posted and prevent fraud. Your status must be visible to your contacts.' },
     { q: 'When do I get paid?', a: 'Once the admin approves your screenshot, the amount is added to your balance. You can withdraw from 200 F via Mobile Money.' },
     { q: 'Why was my proof rejected?', a: 'Unreadable screenshot, date not visible, status deleted too early or views that do not match. Take a clear screenshot with the date visible.' },
@@ -22,7 +22,7 @@ export const FAQ: Record<string, { q: string; a: string }[]> = {
     { q: 'I have a promo code, where do I enter it?', a: 'In the Advertiser tab, Credit section. Free credit reduces the amount you pay for your campaign.' },
   ],
   pt: [
-    { q: "Como eu ganho dinheiro?", a: "Escolha um anúncio na aba Anúncios, copie-o e publique no status do WhatsApp. Após 24 h, envie a captura de tela das suas visualizações. Cada visualização validada rende 1 F." },
+    { q: "Como eu ganho dinheiro?", a: "Escolha um anúncio na aba Anúncios, copie-o e publique no status do WhatsApp. Envie capturas em H+1 e H+23. Cada visualização aprovada rende 3 F." },
     { q: "Por que salvar o número do admin?", a: "Ele nos permite ver os seus status para verificar se foram mesmo publicados e evitar fraudes. O seu status deve estar visível para os seus contatos." },
     { q: "Quando recebo?", a: "Depois que o admin validar sua captura, o valor é somado ao seu saldo. Você pode sacar a partir de 200 F por Mobile Money." },
     { q: "Por que minha prova foi recusada?", a: "Captura ilegível, data não visível, status apagado cedo demais ou número de visualizações divergente. Faça uma nova captura nítida, com a data visível." },
