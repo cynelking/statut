@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { sb } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
-import { Ctx, DAILY_BONUS, DAILY_GOAL, MIN_WITHDRAW } from '@/lib/types';
+import { Ctx, DAILY_BONUS, DAILY_GOAL, MIN_WITHDRAW, withdrawalFee } from '@/lib/types';
 import Leaderboard from './Leaderboard';
 import ReferralCard from './ReferralCard';
 import LevelCard from './LevelCard';
@@ -37,6 +37,8 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
   const countryNetworks = payNetworks.filter((network) =>
     network.country === withdrawCountry && network.is_active,
   );
+  const withdrawalFeeAmount = withdrawalFee(c.d.bal);
+  const payoutAmount = Math.max(0, c.d.bal - withdrawalFeeAmount);
 
   useEffect(() => {
     if (view !== 'wallet') return;
@@ -318,8 +320,12 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
         <label htmlFor="withdraw-phone">{t('saspay_recipient_phone')}</label>
         <input id="withdraw-phone" type="tel" autoComplete="tel" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} />
         <p className="m">{t('wdmin')}</p>
+        <p className="m">{t('wd_fee_schedule')}</p>
+        <p className="m">
+          {t('wd_gross_label')}: <b>{f(c.d.bal)}</b> · {t('wd_fee_label')}: <b>{f(withdrawalFeeAmount)}</b> · {t('wd_net_label')}: <b>{f(payoutAmount)}</b>
+        </p>
         <p className="m">{t('wd_proof_only')}</p>
-        <button className="p" disabled={withdrawing || c.d.bal < MIN_WITHDRAW || !withdrawNetwork || !!networkError} onClick={withdraw}>{withdrawing ? '…' : `${t('wdb')} ${f(c.d.bal)}`}</button>
+        <button className="p" disabled={withdrawing || c.d.bal < MIN_WITHDRAW || !withdrawNetwork || !!networkError} onClick={withdraw}>{withdrawing ? '…' : `${t('wdb')} ${f(payoutAmount)}`}</button>
         <p className="m">{t('saspay_payout_auto_note')}</p>
       </section>
     </div>

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { sb } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
-import { ADMIN, BOOST_FEE, COUNTRIES, CType, Ctx, FEE } from '@/lib/types';
+import { ADMIN, BOOST_OPTIONS, boostFee, COUNTRIES, CType, Ctx, FEE } from '@/lib/types';
 import ReportPanel from './ReportPanel';
 import RateForm from './RateForm';
 
@@ -41,7 +41,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
   const [mediaInputKey, setMediaInputKey] = useState(0);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [target, setTarget] = useState('');
-  const [boost, setBoost] = useState(false);
+  const [boostHours, setBoostHours] = useState(0);
   const [useCredit, setUseCredit] = useState(true);
   const [starts, setStarts] = useState('');
   const [ends, setEnds] = useState('');
@@ -63,7 +63,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
   }, [mediaFile]);
 
   const b = Math.max(0, Number(budget) || 0);
-  const total = isAdmin ? 0 : b + FEE + (boost ? BOOST_FEE : 0);
+  const total = isAdmin ? 0 : b + FEE + boostFee(boostHours);
   const credit = c.profile.credit;
   const used = !isAdmin && useCredit ? Math.min(credit, total) : 0;
   const walletUsed = !isAdmin && c.d.walletBalance >= total - used ? total - used : 0;
@@ -198,7 +198,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
         }
         const r = await sb.rpc('create_campaign', {
           p_title: title.trim(), p_type: type, p_content: content.trim(), p_media_url: mediaUrl,
-          p_budget: b, p_country: target, p_boost: boost, p_use_credit: !isAdmin && useCredit,
+          p_budget: b, p_country: target, p_boost_hours: boostHours, p_use_credit: !isAdmin && useCredit,
           p_starts: starts || null, p_ends: ends || null,
         });
         if (r.error) {
@@ -210,7 +210,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
         }
         const campaignId = Number(r.data);
         if (!Number.isSafeInteger(campaignId) || campaignId < 1) throw new Error('La campagne a été créée sans identifiant valide');
-        setTitle(''); setBudget(''); setContent(''); setMediaFile(null); setMediaLink(''); setMediaInputKey((key) => key + 1); setBoost(false); setStarts(''); setEnds('');
+        setTitle(''); setBudget(''); setContent(''); setMediaFile(null); setMediaLink(''); setMediaInputKey((key) => key + 1); setBoostHours(0); setStarts(''); setEnds('');
         await c.reload();
         if (due > 0) await createAlphaPayCheckout(campaignId);
         else c.say(t(isAdmin ? 'admin_campaign_created' : 'created'));
@@ -355,9 +355,15 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
         )}
         <label htmlFor="tx">{type === 'txt' ? t('content') : t('media_caption')}</label>
         <textarea id="tx" rows={3} maxLength={500} value={content} onChange={(e) => setContent(e.target.value)} />
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 500 }}>
-          <input type="checkbox" checked={boost} onChange={(e) => setBoost(e.target.checked)} /> {t('boost')}{!isAdmin && <> (+{f(BOOST_FEE)})</>}
-        </label>
+        <label htmlFor="boost-hours">{t('boost_duration')}</label>
+        <select id="boost-hours" value={boostHours} onChange={(e) => setBoostHours(Number(e.target.value))}>
+          <option value={0}>{t('boost_none')}</option>
+          {BOOST_OPTIONS.map((hours) => (
+            <option key={hours} value={hours}>
+              {t(`boost_${hours}`)}{!isAdmin && ` · ${f(boostFee(hours))}`}
+            </option>
+          ))}
+        </select>
         {!isAdmin && credit > 0 && (
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 500 }}>
             <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} /> {t('use_credit')} ({f(credit)})
@@ -366,7 +372,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
         {!isAdmin && c.d.walletBalance > 0 && <p className="m">{t('wallet_campaign_note')}</p>}
         <p className="note" style={{ marginTop: 14 }}>
           {isAdmin ? <>{t('admin_campaign_free')}<br />{t('maxv')} : <b>{b.toLocaleString()}</b></>
-            : <>{t('fee')} : <b>{f(FEE)}</b>{boost && <> · {t('boost_fee')} : <b>{f(BOOST_FEE)}</b></>} · {t('maxv')} : <b>{b.toLocaleString()}</b><br />
+            : <>{t('fee')} : <b>{f(FEE)}</b>{boostHours > 0 && <> · {t('boost_fee')} : <b>{f(boostFee(boostHours))}</b></>} · {t('maxv')} : <b>{b.toLocaleString()}</b><br />
               {t('tot')} : <b>{f(total)}</b>{used > 0 && <> − {t('credit')} <b>{f(used)}</b></>}{walletUsed > 0 && <> − {t('wallet_title')} <b>{f(walletUsed)}</b></>}<br />
               {t('to_pay')} : <b>{f(due)}</b>{ends && <><br /><span className="m">{t('refund_note')}</span></>}</>}
         </p>
@@ -390,12 +396,12 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
         <h2>{t('myc')}</h2>
         {mine.length === 0 && <p className="m">{t('none')}</p>}
         {mine.map((x, i) => {
-          const owed = x.admin_created ? 0 : x.budget + FEE + (x.boost_hours > 0 ? BOOST_FEE : 0) - x.credit_used - (x.wallet_used || 0);
+          const owed = x.admin_created ? 0 : x.budget + FEE + boostFee(x.boost_hours) - x.credit_used - (x.wallet_used || 0);
           return (
             <div className={'row' + (i === 0 ? ' first' : '')} style={{ display: 'block' }} key={x.id}>
               <b>{x.title}</b>{' '}
               <span className={'tag ' + (x.status === 'active' ? 'ok' : x.status === 'pending' ? 'w' : '')}>{t('st_' + x.status)}</span>{' '}
-              {x.boost_hours > 0 && <span className="tag boost">{t('sponsored')}</span>}
+              {x.boost_hours > 0 && <span className="tag boost">{t('sponsored')} · {t(`boost_${x.boost_hours}`)}</span>}
               <div className="m">{f(x.spent)} / {f(x.budget)} {t('spent')} · {x.country ?? t('all_c')}{x.starts_at ? ' · ' + t('starts_on') + ' ' + x.starts_at.slice(0, 10) : ''}{x.ends_at ? ' · ' + t('ends_in') + ' ' + new Date(Date.parse(x.ends_at) - 1).toISOString().slice(0, 10) : ''}</div>
               {x.status === 'pending' && x.payment_provider !== 'alphapay' ? (
                 <p className="note" style={{ marginTop: 8 }}>{t('payinfo')} <b>{ADMIN}</b> : <b>{f(owed)}</b> {t('payinfo2')}</p>

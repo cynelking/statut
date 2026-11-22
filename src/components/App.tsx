@@ -216,14 +216,14 @@ export default function App() {
 
   const admin = profile?.role === 'admin';
   const workspaceItems: { id: WorkspacePage; icon: string; label: string }[] = [
-    { id: 'dashboard', icon: 'home', label: t('dash') },
-    { id: 'feed', icon: 'f', label: t('r_f') },
-    { id: 'advertiser', icon: 'a', label: t('r_a') },
-    { id: 'campaigns', icon: 'campaign', label: t('myc') },
-    { id: 'wallet', icon: 'wallet', label: t('wallet_title') },
-    { id: 'create', icon: 'plus', label: t('new') },
-    ...(admin ? [{ id: 'admin' as const, icon: 'm', label: t('r_m') }] : []),
-    { id: 'profile', icon: 'p', label: t('r_p') },
+    { id: 'dashboard', icon: 'home', label: t('nav_home') },
+    { id: 'feed', icon: 'f', label: t('nav_feed') },
+    { id: 'advertiser', icon: 'a', label: t('nav_advertiser') },
+    { id: 'campaigns', icon: 'campaign', label: t('nav_campaigns') },
+    { id: 'wallet', icon: 'wallet', label: t('nav_wallet') },
+    { id: 'create', icon: 'plus', label: t('nav_create') },
+    ...(admin ? [{ id: 'admin' as const, icon: 'm', label: t('nav_admin') }] : []),
+    { id: 'profile', icon: 'p', label: t('nav_profile') },
   ];
   const navigate = (next: WorkspacePage) => setPage(admin || next !== 'admin' ? next : 'dashboard');
   const navigateTab = (next: Tab) => {
@@ -254,7 +254,10 @@ export default function App() {
   );
   else if (!profile) body = <p className="m">…</p>;
   else {
-    const ctx: Ctx = { user, profile, d, reload, say, run, sel, pick: setSel, go: navigateTab, toggleFav };
+    const ctx: Ctx = {
+      user, profile, d, reload, say, run, sel, pick: setSel, go: navigateTab,
+      goWallet: () => navigate('wallet'), goCampaigns: () => navigate('campaigns'), toggleFav,
+    };
     body = (
       <>
         <OfflineSync c={ctx} />

@@ -49,8 +49,8 @@ export default function ProfileView({ c, logout }: { c: Ctx; logout: () => void 
   const pendingWithdrawals = c.d.wd.filter((withdrawal) =>
     withdrawal.status === 'pending' || withdrawal.status === 'processing',
   );
-  const paidTotal = paidWithdrawals.reduce((sum, withdrawal) => sum + withdrawal.amount, 0);
-  const pendingTotal = pendingWithdrawals.reduce((sum, withdrawal) => sum + withdrawal.amount, 0);
+  const paidTotal = paidWithdrawals.reduce((sum, withdrawal) => sum + (withdrawal.payout_amount ?? withdrawal.amount), 0);
+  const pendingTotal = pendingWithdrawals.reduce((sum, withdrawal) => sum + (withdrawal.payout_amount ?? withdrawal.amount), 0);
   const recentProofs = [...c.d.proofs]
     .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
     .slice(0, 3);
@@ -115,7 +115,7 @@ export default function ProfileView({ c, logout }: { c: Ctx; logout: () => void 
           <span className="tag">{c.profile.role === 'admin' ? t('r_m') : t('r_d')}</span>
         </div>
         <div className="profile-head-actions">
-          <button className="s" type="button" onClick={() => c.go('d')}>{t('wd')}</button>
+          <button className="s" type="button" onClick={c.goWallet}>{t('wd')}</button>
           <button className="p" type="button" onClick={() => c.go('f')}>{t('r_f')}</button>
         </div>
       </section>
@@ -197,7 +197,7 @@ export default function ProfileView({ c, logout }: { c: Ctx; logout: () => void 
           <button type="button" onClick={() => c.go('f')}>
             <span>{t('profile_favorites')}</span><b>{c.d.favs.length}</b>
           </button>
-          <button type="button" onClick={() => c.go('a')}>
+          <button type="button" onClick={c.goCampaigns}>
             <span>{t('myc')}</span><b>{myCampaigns.length}</b>
           </button>
           <button type="button" onClick={() => c.go('d')}>

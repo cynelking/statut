@@ -240,7 +240,7 @@ export default function AdminView({ c }: { c: Ctx }) {
               <div className={'row' + (i === 0 ? ' first' : '')} key={w.id}>
                 <div>
                   <b>{w.profiles?.phone}</b>
-                  <div className="m">{w.operator} · {w.recipient_network || '—'} · {w.recipient_country || '—'} · {w.recipient_phone || w.profiles?.phone} · {f(w.amount)}</div>
+                  <div className="m">{w.operator} · {w.recipient_network || '—'} · {w.recipient_country || '—'} · {w.recipient_phone || w.profiles?.phone} · {t('wd_gross_label')}: {f(w.amount)} · {t('wd_fee_label')}: {f(w.fee ?? 0)} · {t('wd_net_label')}: {f(w.payout_amount ?? w.amount)}</div>
                   {w.status === 'processing' && <span className="tag w">{t('saspay_payout_pending')}</span>}
                 </div>
                 <button className="s" disabled={payoutBusy === w.id} onClick={() => processPayout(w.id)}>

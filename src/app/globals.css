@@ -556,6 +556,15 @@ button.s.on{box-shadow:0 6px 15px color-mix(in srgb,var(--brand) 18%,transparent
 }
 
 .publisher-view,.advertiser-view{display:contents}
+.page-screen{display:contents}
+.advertiser-overview{display:grid;gap:18px}
+.brand-mark{
+  width:39px;height:39px;flex:none;border-radius:13px;display:grid;place-items:center;
+  background:linear-gradient(135deg,#08B96B,#31D69A);color:#fff;font-size:22px;font-weight:900
+}
+.app-header:not(.app-header-guest)>.logo{gap:11px}
+.app-header:not(.app-header-guest)>.logo strong{color:#fff;font-size:20px;letter-spacing:-.6px}
+.app-header:not(.app-header-guest)>.logo strong span{color:#35D99A}
 .publisher-view-dashboard .wallet-only,.publisher-view-wallet .dashboard-only{display:none!important}
 .advertiser-view-campaigns .advertiser-overview,
 .advertiser-view-campaigns .advertiser-create-only,
@@ -571,6 +580,7 @@ button.s.on{box-shadow:0 6px 15px color-mix(in srgb,var(--brand) 18%,transparent
 .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin:2px 0 4px}
 .page-head h1{margin:6px 0 5px;font-size:clamp(24px,3vw,30px)}
 .page-head .sub{margin:0}
+.page-head>.p{width:auto;flex:none;margin:0;padding:12px 17px}
 .eyebrow{color:var(--ok);font-size:11px;font-weight:850;letter-spacing:1.5px;text-transform:uppercase}
 .campaign-list{display:grid;gap:12px}
 .campaign-item{
@@ -623,6 +633,7 @@ button.s.on{box-shadow:0 6px 15px color-mix(in srgb,var(--brand) 18%,transparent
 .setting{display:flex;align-items:center;gap:13px;padding:16px 3px;border-bottom:1px solid var(--line);font-size:13px;font-weight:700}
 .setting span:last-child{margin-left:auto;color:var(--mute)}
 .campaign-list .tag{justify-self:end}
+.card{border-radius:17px}
 .dashboard-recommendations .dashboard-card-title{margin-bottom:16px}
 .dashboard-chart{background:linear-gradient(180deg,color-mix(in srgb,var(--ok) 8%,var(--surf)),var(--surf) 85%)}
 .announcement-feed{border-color:color-mix(in srgb,var(--brand) 35%,var(--line));background:linear-gradient(135deg,var(--surf),var(--soft))}

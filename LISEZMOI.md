@@ -1,6 +1,8 @@
 # StatutPay — Next.js 14 + Supabase (PWA)
 
 ## Installation
+Après `migration_v15.sql`, appliquez aussi `migration_v16.sql` à `migration_v21.sql` dans l’ordre numérique. Pour une base déjà à jour jusqu’à la v20, appliquez uniquement `migration_v21.sql`.
+
 1. `npm install`
 2. Copiez `.env.local.example` en `.env.local` et renseignez l’URL et la clé **anon** (Supabase > Project Settings > API).
 3. Supabase > SQL Editor : collez `supabase/schema.sql` puis Run, **puis** `supabase/migration_v2.sql` puis Run (parrainage, favoris, classement, notifications, tableau de bord), **puis** `supabase/migration_v3.sql` puis Run (codes promo, boost, niveaux, avis, défis, rapports, profil), **puis** `supabase/migration_v4.sql` puis Run (campagnes programmées, parrainage 3 niveaux), **puis** `supabase/migration_v5.sql` puis Run (désactivation de l'ancienne vérification SMS), **puis** `supabase/migration_v6.sql` puis Run (médias pour les annonces), **puis** `supabase/migration_v7.sql` puis Run (réparation des colonnes de crédit manquantes), **puis** `supabase/migration_v8.sql` puis Run (réparation des colonnes de campagne manquantes), **puis** `supabase/migration_v9.sql` puis Run (administration), puis `supabase/migration_v11.sql` puis Run (réparation des colonnes du profil), `supabase/migration_v12.sql` puis Run (historique des transactions), `supabase/migration_v13.sql` puis Run (structure initiale des paiements), `supabase/migration_v14.sql` puis Run (portefeuille annonceur et AlphaPay), et enfin `supabase/migration_v15.sql` puis Run (activation automatique après paiement AlphaPay confirmé).
@@ -69,7 +71,7 @@ Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, 
 
 ## Version 3 : nouveautés
 - **Codes promo et crédit offert** : l'admin crée des codes (onglet Admin > Gestion > Codes promo). L'annonceur les saisit dans son onglet (un seul code par compte). Le crédit réduit le montant à payer ; s'il couvre tout, la campagne est activée automatiquement. Exemple de code de bienvenue : voir la fin de `migration_v3.sql`.
-- **Campagnes boostées** : +1 000 F, 48 h en tête du feed avec l'étiquette « Sponsorisé » (le compte à rebours démarre à l'activation). Tarif : `BOOST_FEE` dans `src/lib/types.ts` **et** `create_campaign` dans le SQL.
+- **Campagnes boostées** : choisissez 24 h (500 F), 48 h (1 000 F) ou 7 jours (3 500 F) en tête du feed, avec l'étiquette « Sponsorisé ». Le compte à rebours démarre à l'activation.
 - **Niveaux** : Bronze, Argent (5 validations, 80 % de réussite, +5 %), Or (20 validations, 90 %, +10 %). Le bonus est payé par la plateforme, en plus des 1 F par vue.
 - **Avis** : après une preuve validée, le diffuseur note l'annonceur et l'annonceur note le diffuseur (1 à 5 étoiles + commentaire). La note de l'annonceur s'affiche dans le feed.
 - **Défi du jour** : 3 preuves soumises le même jour ; +50 F versés automatiquement quand 3 preuves du jour sont validées.

@@ -3,8 +3,16 @@ import type { User } from '@supabase/supabase-js';
 export const ADMIN = '+22896292039';
 export const ADMIN_LINK = 'https://wa.me/22896292039';
 export const FEE = 500;
-export const BOOST_FEE = 1000;      // doit correspondre à create_campaign (migration_v3.sql)
+export const BOOST_FEES: Record<number, number> = { 24: 500, 48: 1000, 168: 3500 };
+export const BOOST_OPTIONS = [24, 48, 168] as const;
+export const boostFee = (hours: number) => BOOST_FEES[hours] ?? 0;
 export const MIN_WITHDRAW = 200;
+export function withdrawalFee(amount: number) {
+  if (amount < MIN_WITHDRAW) return 0;
+  if (amount < 1000) return 50;
+  if (amount < 5000) return 100;
+  return 0;
+}
 export const REF_LEVELS = [100, 30, 10]; // doit correspondre à migration_v4.sql
 export const AMB_AT = 10;
 export const AMB_BONUS = 150;
@@ -19,7 +27,7 @@ export type CType = 'img' | 'vid' | 'txt';
 export interface Profile { id: string; phone: string; country: string | null; role: 'user' | 'admin'; ref_code: string | null; display_name: string | null; avatar: string | null; credit: number }
 export interface Campaign { id: number; owner: string; title: string; type: CType; content: string | null; media_url: string | null; budget: number; spent: number; status: 'pending' | 'active' | 'done'; country: string | null; created_at?: string; boost_hours: number; boost_until: string | null; credit_used: number; wallet_used?: number; admin_created?: boolean; starts_at: string | null; ends_at: string | null; payment_provider?: 'alphapay' | 'wallet' | null; payment_status?: 'pending' | 'paid' | 'failed' | 'review' | null }
 export interface Proof { id: number; campaign_id: number; user_id: string; image_path: string; views: number; bonus: number; status: 'pending' | 'approved' | 'rejected'; created_at?: string; profiles?: { phone: string } | null }
-export interface Withdrawal { id: number; user_id: string; amount: number; operator: string; status: 'pending' | 'processing' | 'paid' | 'failed'; recipient_country?: string | null; recipient_network?: string | null; recipient_phone?: string | null; saspay_payout_id?: string | null; created_at?: string; profiles?: { phone: string } | null }
+export interface Withdrawal { id: number; user_id: string; amount: number; fee?: number; payout_amount?: number; operator: string; status: 'pending' | 'processing' | 'paid' | 'failed'; recipient_country?: string | null; recipient_network?: string | null; recipient_phone?: string | null; saspay_payout_id?: string | null; created_at?: string; profiles?: { phone: string } | null }
 export type TransactionKind = 'earning' | 'level_bonus' | 'referral_bonus' | 'daily_bonus' | 'promo_credit' | 'credit_used' | 'credit_refund' | 'wallet_topup' | 'wallet_used' | 'wallet_refund' | 'withdrawal' | 'proof_status';
 export type TransactionStatus = 'approved' | 'pending' | 'processing' | 'rejected' | 'paid' | 'failed' | 'credited' | 'used' | 'refunded';
 export interface Transaction {
@@ -54,5 +62,7 @@ export interface Ctx {
   sel: number | null;
   pick: (id: number | null) => void;
   go: (t: Tab) => void;
+  goWallet: () => void;
+  goCampaigns: () => void;
   toggleFav: (id: number) => void;
 }
