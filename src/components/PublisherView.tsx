@@ -210,41 +210,17 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
           <div id="transaction-history"><TransactionHistory /></div>
         </>
       )}
-      <div className="dashboard-head dashboard-only">
-        <div>
-          <span className="dashboard-eyebrow">{t('r_d')}</span>
-          <h1>{displayName ? `Bonjour, ${displayName} 👋` : 'Bonjour 👋'}</h1>
-          <p className="m">Voici les performances de votre activité aujourd’hui.</p>
+      <section className="hero dashboard-hero dashboard-only">
+        <span className="lb">{displayName ? `Bonjour, ${displayName}` : 'Bonjour'}</span>
+        <b className="big">{f(c.d.bal)}</b>
+        <div className="mini">
+          <span><b>{paidViews.toLocaleString()}</b> {t('views')}</span>
+          <span><b>{pending}</b> {t('pend')}</span>
+          <span><b>{activeCampaigns.length}</b> {t('camps')}</span>
+          <span><b>{completedCount}</b> validations</span>
         </div>
         <button className="dashboard-primary" type="button" onClick={() => c.go('f')}>＋ Voir les campagnes</button>
-      </div>
-
-      <div className="dashboard-kpis dashboard-only">
-        <article className="dashboard-kpi">
-          <span className="dashboard-kpi-icon">F</span>
-          <span>{t('bal')}</span>
-          <b>{f(c.d.bal)}</b>
-          <small>Solde disponible</small>
-        </article>
-        <article className="dashboard-kpi">
-          <span className="dashboard-kpi-icon">◉</span>
-          <span>{t('views')}</span>
-          <b>{paidViews.toLocaleString()}</b>
-          <small>{pending} {t('pend')}</small>
-        </article>
-        <article className="dashboard-kpi">
-          <span className="dashboard-kpi-icon">▣</span>
-          <span>{t('camps')}</span>
-          <b>{activeCampaigns.length}</b>
-          <small>{completedCount} validations</small>
-        </article>
-        <article className="dashboard-kpi">
-          <span className="dashboard-kpi-icon">★</span>
-          <span>Votre progression</span>
-          <b>{Math.min(100, Math.round((approved.length / 20) * 100))}%</b>
-          <small>Niveau de confiance</small>
-        </article>
-      </div>
+      </section>
 
       <div className="dashboard-columns dashboard-only">
         <section className="card dashboard-chart">

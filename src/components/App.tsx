@@ -220,25 +220,18 @@ export default function App() {
   }, [user, d.favs, run, load]);
 
   const admin = profile?.role === 'admin';
-  const workspaceItems: { id: WorkspacePage; icon: string; label: string }[] = [
-    { id: 'dashboard', icon: 'home', label: t('nav_home') },
-    { id: 'feed', icon: 'f', label: t('nav_feed') },
-    { id: 'advertiser', icon: 'a', label: t('nav_advertiser') },
-    { id: 'campaigns', icon: 'campaign', label: t('nav_campaigns') },
-    { id: 'wallet', icon: 'wallet', label: t('nav_wallet') },
-    { id: 'create', icon: 'plus', label: t('nav_create') },
-    ...(admin ? [{ id: 'admin' as const, icon: 'm', label: t('nav_admin') }] : []),
-    { id: 'profile', icon: 'p', label: t('nav_profile') },
-  ];
+  const tabs: Tab[] = admin ? ['f', 'd', 'a', 'm', 'p'] : ['f', 'd', 'a', 'p'];
   const navigate = (next: WorkspacePage) => setPage(admin || next !== 'admin' ? next : 'dashboard');
+  const activeTab: Tab = page === 'feed' ? 'f'
+    : page === 'advertiser' || page === 'campaigns' || page === 'wallet' || page === 'create' ? 'a'
+      : page === 'admin' ? 'm'
+        : page === 'profile' || page === 'notifications' || page === 'help' ? 'p' : 'd';
   const navigateTab = (next: Tab) => {
     const destinations: Record<Tab, WorkspacePage> = {
       d: 'dashboard', f: 'feed', a: 'advertiser', m: 'admin', p: 'profile',
     };
     navigate(destinations[next]);
   };
-  const activeLabel = workspaceItems.find((item) => item.id === page)?.label
-    ?? (page === 'notifications' ? t('push_t') : page === 'help' ? t('help') : t('profile'));
 
   let body: React.ReactNode;
   if (!user) body = (
@@ -296,24 +289,16 @@ export default function App() {
   return (
     <>
       <header className={`app-header${user ? '' : ' app-header-guest'}`}>
-        <div className="logo">
-          {user && !recovery
-            ? <><div className="brand-mark">S</div><strong>Statut<span>Pay</span></strong></>
-            : <Image src="/brand-logo.png" alt="StatutPay" width={1513} height={405} priority />}
-        </div>
+        <div className="logo"><Image src="/brand-logo.png" alt="StatutPay" width={1513} height={405} priority /></div>
         {user && !recovery && (
-          <>
-            <div className="workspace-label">{t('nav_workspace')}</div>
-            <nav className="desktop-nav" aria-label={t('navigation')}>
-              {workspaceItems.map((item) => (
-                <button key={item.id} className={page === item.id ? 'on' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}>
-                  <Icon n={item.icon} /><span>{item.label}</span>
-                </button>
-              ))}
-            </nav>
-          </>
+          <nav className="desktop-nav" aria-label={t('navigation')}>
+            {tabs.map((tab) => (
+              <button key={tab} className={activeTab === tab ? 'on' : ''} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => navigateTab(tab)}>
+                <Icon n={tab} /><span>{t('r_' + tab)}</span>
+              </button>
+            ))}
+          </nav>
         )}
-        {user && !recovery && <div className="workspace-footer">StatutPay 2.0<br />{t('nav_footer')}</div>}
         <div className="hr">
           <InstallButton />
           {user && !recovery && <button className="iconbtn" aria-label={t('push_t')} title={t('push_t')} onClick={() => navigate('notifications')}><Icon n="bell" /></button>}
@@ -327,27 +312,17 @@ export default function App() {
         </div>
       </header>
       <main className={user && !recovery ? 'app-main-auth' : ''}>
-        {user && !recovery && (
-          <div className="workspace-topbar" aria-label="Fil d’Ariane">
-            <div>StatutPay <span>/</span> <b>{activeLabel}</b></div>
-          </div>
-        )}
         <ScrollEffects />
         <InstallBanner />
         {body}
       </main>
       {user && !recovery && (
         <nav className="mobile-nav" aria-label="Navigation principale">
-          {workspaceItems.filter((item) => item.id !== 'admin').map((item) => (
-            <button key={item.id} className={page === item.id ? 'on' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}>
-              <Icon n={item.icon} /><span>{item.label}</span>
+          {tabs.map((tab) => (
+            <button key={tab} className={activeTab === tab ? 'on' : ''} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => navigateTab(tab)}>
+              <Icon n={tab} /><span>{t('r_' + tab)}</span>
             </button>
           ))}
-          {admin && (
-            <button className={page === 'admin' ? 'on' : ''} aria-current={page === 'admin' ? 'page' : undefined} onClick={() => navigate('admin')}>
-              <Icon n="m" /><span>{t('r_m')}</span>
-            </button>
-          )}
         </nav>
       )}
       {sheet === 'help' && <HelpSheet profile={profile} onClose={() => setSheet(null)} />}
