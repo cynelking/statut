@@ -588,6 +588,9 @@ button.s.on{box-shadow:0 6px 15px color-mix(in srgb,var(--brand) 18%,transparent
 .agency-context-switcher{max-width:320px;margin-top:12px}
 .agency-context-switcher label{margin:0 0 6px}
 .agency-context-switcher select{min-height:42px}
+.team-assignment{display:grid;gap:8px;margin-top:14px;padding:12px;border-radius:12px;background:var(--soft)}
+.team-assignment label{display:flex;align-items:center;gap:8px;margin:0;font-weight:500}
+.team-assignment input[type=checkbox]{width:auto;margin:0}
 .eyebrow{color:var(--ok);font-size:11px;font-weight:850;letter-spacing:1.5px;text-transform:uppercase}
 .campaign-list{display:grid;gap:12px}
 .campaign-item{

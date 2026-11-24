@@ -1,7 +1,7 @@
 # StatutPay — Next.js 14 + Supabase (PWA)
 
 ## Installation
-Après `migration_v15.sql`, appliquez aussi les migrations `migration_v16.sql` à `migration_v27.sql` dans l’ordre numérique. Pour une base déjà à jour jusqu’à la v26, appliquez uniquement `migration_v27.sql`.
+Après `migration_v15.sql`, appliquez aussi les migrations `migration_v16.sql` à `migration_v28.sql` dans l’ordre numérique. Pour une base déjà à jour jusqu’à la v27, appliquez uniquement `migration_v28.sql`.
 
 1. `npm install`
 2. Copiez `.env.local.example` en `.env.local` et renseignez l’URL et la clé **anon** (Supabase > Project Settings > API).
@@ -142,6 +142,12 @@ Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, 
 ## Version 27 : comptes agence
 - Exécutez `supabase/migration_v27.sql` après la migration v26. Elle ajoute le rôle agence, les fiches annonceurs et les invitations à accepter.
 - Une agence peut créer une campagne pour un annonceur géré ou ayant accepté son invitation. La campagne est créée sous le compte agence, payée séparément avec AlphaPay et ses budgets/dépenses sont ventilés par annonceur.
+
+## Version 28 : équipe agence
+- Exécutez `supabase/migration_v28.sql` après la migration v27.
+- Le propriétaire et les admins peuvent inviter des membres par numéro (compte existant) ou par lien à usage unique, valable 7 jours. Les invitations par numéro doivent être acceptées dans l’application.
+- Le propriétaire attribue aux membres les annonceurs auxquels ils peuvent accéder. Les membres voient et créent des campagnes uniquement pour ces annonceurs; les campagnes restent la propriété de l’agence.
+- Un membre peut demander le paiement en créant une campagne. Seul le propriétaire de l’agence peut confirmer et payer la campagne avec AlphaPay. Les admins peuvent gérer les invitations et les rôles, mais ne peuvent pas attribuer les annonceurs.
 
 ## Capture des preuves depuis l’application
 - Pour chaque preuve H+1/H+23, le diffuseur peut prendre une photo avec la caméra, choisir une image déjà enregistrée ou capturer un écran/fenêtre si le navigateur le permet.

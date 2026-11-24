@@ -6,10 +6,26 @@ import { BarChart } from './ui';
 
 interface Rep { budget: number; spent: number; publishers: number; pending: number; rejected: number; avg: number; series: { d: string; views: number }[] }
 
-export default function ReportPanel({ id }: { id: number }) {
+export default function ReportPanel({ id, teamMember = false }: { id: number; teamMember?: boolean }) {
   const { t, f } = useI18n();
   const [r, setR] = useState<Rep | null>(null);
-  useEffect(() => { sb.rpc('campaign_report', { p_id: id }).then((x) => { if (!x.error) setR(x.data as Rep); }); }, [id]);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    setR(null);
+    setError('');
+    void (async () => {
+      try {
+        const result = await sb.rpc(teamMember ? 'agency_team_campaign_report' : 'campaign_report', { p_id: id });
+        if (result.error) throw result.error;
+        if (active) setR(result.data as Rep);
+      } catch (reason) {
+        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+      }
+    })();
+    return () => { active = false; };
+  }, [id, teamMember]);
+  if (error) return <p className="err" role="alert">{error}</p>;
   if (!r) return <p className="m">…</p>;
   return (
     <div style={{ marginTop: 10 }}>

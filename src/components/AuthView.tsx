@@ -21,6 +21,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [wait, setWait] = useState(0);
   const [ref, setRef] = useState('');
+  const [teamInviteToken, setTeamInviteToken] = useState('');
   const [accountType, setAccountType] = useState<'user' | 'agency'>('user');
   const su = mode === 'signup';
 
@@ -28,7 +29,18 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
     const q = new URLSearchParams(window.location.search).get('ref');
     if (q) localStorage.setItem('ref', q.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16));
     setRef(localStorage.getItem('ref') ?? '');
+    const invitation = new URLSearchParams(window.location.search).get('team_invite');
+    if (invitation) {
+      setTeamInviteToken(invitation);
+      setAccountType('user');
+    }
   }, []);
+
+  function authRedirectUrl() {
+    const url = new URL(window.location.origin);
+    if (teamInviteToken) url.searchParams.set('team_invite', teamInviteToken);
+    return url.toString();
+  }
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -43,7 +55,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
         const em = email.trim().toLowerCase();
         if (!EMAIL_RE.test(em)) throw new Error(t('bad_em'));
         if (mode === 'forgot') {
-          const r = await sb.auth.resetPasswordForEmail(em, { redirectTo: window.location.origin });
+          const r = await sb.auth.resetPasswordForEmail(em, { redirectTo: authRedirectUrl() });
           if (r.error) throw r.error;
           setMode('login');
           throw new Error(t('reset_sent'));
@@ -55,7 +67,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
           if (!saved) throw new Error(t('bad_sv'));
           const r = await sb.auth.signUp({
             email: em, password: pw,
-            options: { data: { phone: '+' + d, country, ref, account_type: accountType }, emailRedirectTo: window.location.origin },
+            options: { data: { phone: '+' + d, country, ref, account_type: accountType }, emailRedirectTo: authRedirectUrl() },
           });
           if (r.error) {
             const errorText = `${r.error.message} ${r.error.code ?? ''}`;
@@ -92,7 +104,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
   function resend() {
     run(async () => {
       if (!sentTo) return;
-      const r = await sb.auth.resend({ type: 'signup', email: sentTo, options: { emailRedirectTo: window.location.origin } });
+      const r = await sb.auth.resend({ type: 'signup', email: sentTo, options: { emailRedirectTo: authRedirectUrl() } });
       if (r.error) throw r.error;
       setWait(60);
       throw new Error(t('resent'));
@@ -120,6 +132,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
           <div className="hero">
             <h1>{t('join')}</h1>
             <p>{t('join_s')}</p>
+            {teamInviteToken && <p className="note">{t('agency_team_signup_hint')}</p>}
             <div className="chips"><span>{VIEW_RATE} F / {t('view1')}</span><span>200 F min.</span><span>Mobile Money</span></div>
           </div>
           <section className="card auth-welcome">
@@ -145,7 +158,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
           <div className="hero auth-hero">
             <button type="button" className="auth-back" onClick={() => setMode('welcome')}>‹ {t('auth_back')}</button>
             <h1>{mode === 'forgot' ? t('reset_t') : t(su ? 'signup' : 'login')}</h1>
-            <p>{mode === 'signup' ? t(accountType === 'agency' ? 'agency_signup_hint' : 'join_s') : mode === 'login' ? t('auth_login_hint') : t('reset_b')}</p>
+            <p>{mode === 'signup' ? t(teamInviteToken ? 'agency_team_signup_hint' : accountType === 'agency' ? 'agency_signup_hint' : 'join_s') : mode === 'login' ? t('auth_login_hint') : t('reset_b')}</p>
             {su && accountType === 'user' && <div className="chips"><span>{VIEW_RATE} F / {t('view1')}</span><span>200 F min.</span><span>Mobile Money</span></div>}
           </div>
           <form className="card" onSubmit={(e) => { e.preventDefault(); submit(); }}>
@@ -153,11 +166,15 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
             <input id="em" type="email" inputMode="email" autoComplete="email" placeholder="nom@exemple.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             {su && (
               <>
-                <label htmlFor="account-type">{t('account_type')}</label>
-                <select id="account-type" value={accountType} onChange={(e) => setAccountType(e.target.value as 'user' | 'agency')}>
-                  <option value="user">{t('account_individual')}</option>
-                  <option value="agency">{t('agency_account')}</option>
-                </select>
+                {!teamInviteToken && (
+                  <>
+                    <label htmlFor="account-type">{t('account_type')}</label>
+                    <select id="account-type" value={accountType} onChange={(e) => setAccountType(e.target.value as 'user' | 'agency')}>
+                      <option value="user">{t('account_individual')}</option>
+                      <option value="agency">{t('agency_account')}</option>
+                    </select>
+                  </>
+                )}
                 <label htmlFor="ph">{t('phone')}</label>
                 <input id="ph" type="tel" inputMode="tel" autoComplete="tel" placeholder="+228 90 00 00 00" value={phone} onChange={(e) => setPhone(e.target.value)} />
                 <label htmlFor="co">{t('country')}</label>

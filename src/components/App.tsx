@@ -1,10 +1,10 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import type { User } from '@supabase/supabase-js';
 import { configured, sb } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
-import type { Campaign, Ctx, Data, Profile, Proof, Tab, Withdrawal } from '@/lib/types';
+import type { AgencyWorkspace, Campaign, Ctx, Data, Profile, Proof, Tab, Withdrawal } from '@/lib/types';
 import { Icon } from './ui';
 import AuthView from './AuthView';
 import ResetView from './ResetView';
@@ -27,13 +27,15 @@ import { FAQ } from '@/lib/faq';
 import { ADMIN } from '@/lib/types';
 
 const EMPTY: Data = { bal: 0, walletBalance: 0, camps: [], proofs: [], wd: [], aP: [], aW: [], walletTopupsReview: [], favs: [], myReviews: [], ratings: {} };
-type WorkspacePage = 'dashboard' | 'feed' | 'advertiser' | 'campaigns' | 'wallet' | 'create' | 'admin' | 'profile' | 'notifications' | 'help';
+type WorkspacePage = 'dashboard' | 'feed' | 'advertiser' | 'agency' | 'campaigns' | 'wallet' | 'create' | 'admin' | 'profile' | 'notifications' | 'help';
 
 export default function App() {
   const { t, lang } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [d, setD] = useState<Data>(EMPTY);
+  const [teamMemberships, setTeamMemberships] = useState<AgencyWorkspace[]>([]);
+  const [selectedAgencyWorkspaceId, setSelectedAgencyWorkspaceId] = useState<string | null>(null);
   const [agencyAdvertiserId, setAgencyAdvertiserId] = useState<number | null>(null);
   const [page, setPage] = useState<WorkspacePage>('dashboard');
   const [sel, setSel] = useState<number | null>(null);
@@ -41,27 +43,68 @@ export default function App() {
   const [profileLoadError, setProfileLoadError] = useState('');
   const [toast, setToast] = useState('');
   const [sheet, setSheet] = useState<null | 'help'>(null);
+  const processedTeamInvite = useRef<string | null>(null);
+
+  const agencyWorkspaces = useMemo<AgencyWorkspace[]>(() => [
+    ...(profile?.role === 'agency' ? [{
+      id: profile.id,
+      name: profile.display_name?.trim() || profile.phone || 'StatutPay',
+      role: 'owner' as const,
+    }] : []),
+    ...teamMemberships,
+  ], [profile, teamMemberships]);
+  const activeAgencyWorkspace = agencyWorkspaces.find((workspace) => workspace.id === selectedAgencyWorkspaceId)
+    ?? agencyWorkspaces[0] ?? null;
+  const agencyWorkspaceId = activeAgencyWorkspace?.id ?? null;
+  const agencyWorkspaceRole = activeAgencyWorkspace?.role ?? null;
 
   const say = useCallback((m: string) => {
     setToast(m);
     setTimeout(() => setToast(''), 3200);
   }, []);
+  const selectAgencyWorkspace = useCallback((id: string) => {
+    setSelectedAgencyWorkspaceId(id);
+    if (user?.id) localStorage.setItem(`agency-workspace:${user.id}`, id);
+  }, [user?.id]);
   const selectAgencyAdvertiser = useCallback((id: number | null) => {
     setAgencyAdvertiserId(id);
-    if (!user?.id) return;
-    const key = `agency-advertiser:${user.id}`;
+    if (!user?.id || !agencyWorkspaceId) return;
+    const key = `agency-advertiser:${user.id}:${agencyWorkspaceId}`;
     if (id === null) localStorage.removeItem(key);
     else localStorage.setItem(key, String(id));
-  }, [user?.id]);
+  }, [user?.id, agencyWorkspaceId]);
 
   useEffect(() => {
     if (!user?.id) {
+      setSelectedAgencyWorkspaceId(null);
       setAgencyAdvertiserId(null);
       return;
     }
-    const stored = Number(localStorage.getItem(`agency-advertiser:${user.id}`));
+    if (agencyWorkspaces.length === 0) {
+      setSelectedAgencyWorkspaceId(null);
+      setAgencyAdvertiserId(null);
+      return;
+    }
+    const storedWorkspace = localStorage.getItem(`agency-workspace:${user.id}`);
+    const nextWorkspaceId = agencyWorkspaces.some((workspace) => workspace.id === selectedAgencyWorkspaceId)
+      ? selectedAgencyWorkspaceId
+      : agencyWorkspaces.some((workspace) => workspace.id === storedWorkspace)
+        ? storedWorkspace
+        : agencyWorkspaces[0].id;
+    if (nextWorkspaceId !== selectedAgencyWorkspaceId) setSelectedAgencyWorkspaceId(nextWorkspaceId);
+    localStorage.setItem(`agency-workspace:${user.id}`, nextWorkspaceId);
+  }, [user?.id, agencyWorkspaces, selectedAgencyWorkspaceId]);
+
+  useEffect(() => {
+    if (!user?.id || !agencyWorkspaceId) {
+      setAgencyAdvertiserId(null);
+      return;
+    }
+    const storedValue = localStorage.getItem(`agency-advertiser:${user.id}:${agencyWorkspaceId}`)
+      ?? (agencyWorkspaceRole === 'owner' ? localStorage.getItem(`agency-advertiser:${user.id}`) : null);
+    const stored = Number(storedValue);
     setAgencyAdvertiserId(Number.isSafeInteger(stored) && stored > 0 ? stored : null);
-  }, [user?.id]);
+  }, [user?.id, agencyWorkspaceId, agencyWorkspaceRole]);
 
   const run = useCallback((fn: () => Promise<void>) => {
     fn().catch((e: unknown) => say((e as { message?: string })?.message ?? String(e)));
@@ -90,7 +133,7 @@ export default function App() {
     if (expiredProofs.error) throw expiredProofs.error;
     const expired = await sb.rpc('expire_campaigns');
     if (expired.error) throw expired.error;
-    const [p, bal, walletBalance, c, pr, w, fv, rt, mr] = await Promise.all([
+    const [p, bal, walletBalance, c, pr, w, fv, rt, mr, memberships] = await Promise.all([
       sb.from('profiles').select('*').eq('id', u.id).single(),
       sb.rpc('my_balance'),
       sb.rpc('my_wallet_balance'),
@@ -100,10 +143,15 @@ export default function App() {
       sb.from('favorites').select('campaign_id'),
       sb.rpc('ratings'),
       sb.from('reviews').select('proof_id').eq('from_user', u.id),
+      sb.from('agency_team_members').select('agency_id,agency_name,role')
+        .eq('user_id', u.id).eq('status', 'accepted'),
     ]);
     if (p.error) throw p.error;
+    if (memberships.error) throw memberships.error;
     const prof = (p.data ?? null) as Profile | null;
     if (!prof) throw new Error('No profile is associated with this account.');
+    setTeamMemberships(((memberships.data ?? []) as { agency_id: string; agency_name: string; role: 'admin' | 'member' }[])
+      .map((membership) => ({ id: membership.agency_id, name: membership.agency_name, role: membership.role })));
 
     const ratings: Data['ratings'] = {};
     for (const r of ((rt.data ?? []) as { uid: string; dir: string; score: number; n: number }[])) {
@@ -162,8 +210,10 @@ export default function App() {
     if (!user) {
       setProfile(null);
       setD(EMPTY);
+      setTeamMemberships([]);
       setProfileLoadError('');
       setPage('dashboard');
+      processedTeamInvite.current = null;
       return;
     }
     setProfileLoadError('');
@@ -183,6 +233,29 @@ export default function App() {
       setProfileLoadError(reason instanceof Error ? reason.message : String(reason));
     });
   }, [user, load]);
+
+  useEffect(() => {
+    if (!user || !profile || typeof window === 'undefined') return;
+    const token = new URL(window.location.href).searchParams.get('team_invite');
+    if (!token || processedTeamInvite.current === token) return;
+    processedTeamInvite.current = token;
+    void (async () => {
+      try {
+        const result = await sb.rpc('accept_agency_team_invitation_by_token', { p_token: token });
+        if (result.error) throw result.error;
+        const agencyId = String(result.data);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('team_invite');
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+        await load(user);
+        selectAgencyWorkspace(agencyId);
+        setPage('agency');
+        say(t('agency_team_joined'));
+      } catch (reason) {
+        say(reason instanceof Error ? reason.message : String(reason));
+      }
+    })();
+  }, [user, profile, load, selectAgencyWorkspace, say, t]);
 
   useEffect(() => {
     if (!user || typeof window === 'undefined') return;
@@ -239,15 +312,21 @@ export default function App() {
 
   const admin = profile?.role === 'admin';
   const agency = profile?.role === 'agency';
-  const tabs: Tab[] = admin ? ['d', 'a', 'm', 'p'] : agency ? ['a', 'p'] : ['f', 'd', 'a', 'p'];
-  const navigate = (next: WorkspacePage) => setPage(admin || next !== 'admin' ? next : 'dashboard');
+  const tabs: Tab[] = admin ? ['d', 'a', 'm', 'p']
+    : agency ? ['a', ...(teamMemberships.length ? ['g' as const] : []), 'p']
+      : ['f', 'd', ...(teamMemberships.length ? ['g' as const] : []), 'a', 'p'];
+  const navigate = (next: WorkspacePage) => {
+    if (next === 'advertiser' && agency && profile) selectAgencyWorkspace(profile.id);
+    setPage(admin || next !== 'admin' ? next : 'dashboard');
+  };
   const activeTab: Tab = page === 'feed' ? (admin ? 'd' : 'f')
-    : page === 'advertiser' || page === 'campaigns' || page === 'wallet' || page === 'create' ? 'a'
+    : page === 'agency' ? 'g'
+      : page === 'advertiser' || page === 'campaigns' || page === 'wallet' || page === 'create' ? 'a'
       : page === 'admin' ? 'm'
         : page === 'profile' || page === 'notifications' || page === 'help' ? 'p' : agency ? 'a' : 'd';
   const navigateTab = (next: Tab) => {
     const destinations: Record<Tab, WorkspacePage> = {
-      d: 'dashboard', f: 'feed', a: 'advertiser', m: 'admin', p: 'profile',
+      d: 'dashboard', f: 'feed', a: 'advertiser', g: 'agency', m: 'admin', p: 'profile',
     };
     navigate(destinations[next]);
   };
@@ -272,14 +351,16 @@ export default function App() {
   else if (!profile) body = <p className="m">…</p>;
   else {
     const ctx: Ctx = {
-      user, profile, d, agencyAdvertiserId, selectAgencyAdvertiser, reload, say, run, sel, pick: setSel, go: navigateTab,
+      user, profile, d, agencyWorkspaces, agencyWorkspaceId, agencyWorkspaceRole, selectAgencyWorkspace,
+      agencyAdvertiserId, selectAgencyAdvertiser, reload, say, run, sel, pick: setSel, go: navigateTab,
       goWallet: () => navigate('wallet'), goCampaigns: () => navigate('campaigns'), toggleFav,
     };
     body = (
       <>
         <OfflineSync c={ctx} />
-        {profile.role === 'user' && <AgencyInvitations c={ctx} />}
+        {profile.role !== 'admin' && <AgencyInvitations c={ctx} />}
         {page === 'feed' ? <FeedView c={ctx} />
+          : page === 'agency' ? <AdvertiserView c={ctx} view="overview" onNavigate={navigate} />
           : page === 'dashboard' && agency ? <AdvertiserView c={ctx} view="overview" onNavigate={navigate} />
             : page === 'dashboard' ? <PublisherView c={ctx} view="dashboard" />
             : page === 'wallet' ? <PublisherView c={ctx} view="wallet" />

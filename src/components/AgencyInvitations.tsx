@@ -11,21 +11,34 @@ interface AgencyInvitation {
   created_at: string;
 }
 
+interface TeamInvitation {
+  id: number;
+  agency_id: string;
+  agency_name: string;
+  role: 'admin' | 'member';
+  expires_at: string;
+}
+
 export default function AgencyInvitations({ c }: { c: Ctx }) {
   const { t } = useI18n();
   const [invitations, setInvitations] = useState<AgencyInvitation[]>([]);
+  const [teamInvitations, setTeamInvitations] = useState<TeamInvitation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [workingId, setWorkingId] = useState<number | null>(null);
+  const [workingId, setWorkingId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const loadInvitations = useCallback(async () => {
-    const result = await sb.from('agency_advertisers')
-      .select('id,agency_name,name,created_at')
-      .eq('linked_user_id', c.user.id)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
-    if (result.error) throw result.error;
-    setInvitations((result.data ?? []) as AgencyInvitation[]);
+    const [advertisers, team] = await Promise.all([
+      sb.from('agency_advertisers').select('id,agency_name,name,created_at')
+        .eq('linked_user_id', c.user.id).eq('status', 'pending').order('created_at', { ascending: true }),
+      sb.from('agency_team_members').select('id,agency_id,agency_name,role,expires_at')
+        .eq('user_id', c.user.id).eq('status', 'pending').gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: true }),
+    ]);
+    if (advertisers.error) throw advertisers.error;
+    if (team.error) throw team.error;
+    setInvitations((advertisers.data ?? []) as AgencyInvitation[]);
+    setTeamInvitations((team.data ?? []) as TeamInvitation[]);
   }, [c.user.id]);
 
   useEffect(() => {
@@ -43,7 +56,7 @@ export default function AgencyInvitations({ c }: { c: Ctx }) {
 
   function respond(id: number, accept: boolean) {
     c.run(async () => {
-      setWorkingId(id);
+      setWorkingId(`advertiser-${id}`);
       setError('');
       try {
         const result = await sb.rpc('respond_agency_invitation', {
@@ -62,7 +75,33 @@ export default function AgencyInvitations({ c }: { c: Ctx }) {
     });
   }
 
-  if (loading || (invitations.length === 0 && !error)) return null;
+  function respondToTeam(id: number, agencyId: string, accept: boolean) {
+    c.run(async () => {
+      setWorkingId(`team-${id}`);
+      setError('');
+      try {
+        const result = await sb.rpc('respond_agency_team_invitation', {
+          p_invitation_id: id,
+          p_accept: accept,
+        });
+        if (result.error) throw result.error;
+        setTeamInvitations((current) => current.filter((invitation) => invitation.id !== id));
+        if (accept) {
+          await c.reload();
+          c.selectAgencyWorkspace(agencyId);
+          c.go('g');
+        }
+        c.say(t(accept ? 'agency_team_joined' : 'agency_invitation_declined'));
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : t('agency_invitation_error'));
+        throw reason;
+      } finally {
+        setWorkingId(null);
+      }
+    });
+  }
+
+  if (loading || (invitations.length === 0 && teamInvitations.length === 0 && !error)) return null;
 
   return (
     <section className="card" aria-labelledby="agency-invitations-title">
@@ -76,9 +115,27 @@ export default function AgencyInvitations({ c }: { c: Ctx }) {
           </div>
           <div className="actions">
             <button type="button" className="p" disabled={workingId !== null} onClick={() => respond(invitation.id, true)}>
-              {workingId === invitation.id ? '…' : t('agency_accept')}
+              {workingId === `advertiser-${invitation.id}` ? '…' : t('agency_accept')}
             </button>
             <button type="button" className="s" disabled={workingId !== null} onClick={() => respond(invitation.id, false)}>
+              {t('agency_decline')}
+            </button>
+          </div>
+        </div>
+      ))}
+      {teamInvitations.map((invitation) => (
+        <div className="row" key={`team-${invitation.id}`}>
+          <div>
+            <b>{invitation.agency_name}</b> {t('agency_team_invited')}
+            <p className="m">{t(invitation.role === 'admin' ? 'agency_team_role_admin' : 'agency_team_role_member')}</p>
+          </div>
+          <div className="actions">
+            <button type="button" className="p" disabled={workingId !== null}
+              onClick={() => respondToTeam(invitation.id, invitation.agency_id, true)}>
+              {workingId === `team-${invitation.id}` ? '…' : t('agency_accept')}
+            </button>
+            <button type="button" className="s" disabled={workingId !== null}
+              onClick={() => respondToTeam(invitation.id, invitation.agency_id, false)}>
               {t('agency_decline')}
             </button>
           </div>

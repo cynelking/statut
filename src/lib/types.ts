@@ -23,10 +23,11 @@ export const COUNTRIES = ['Togo', 'Bénin', 'Côte d’Ivoire', 'Sénégal', 'Bu
 export const OPERATORS = ['Orange Money', 'MTN MoMo', 'Moov Money', 'Wave', 'T-Money', 'Flooz'];
 export const AVATARS = ['🙂', '😎', '🦁', '🐯', '🦅', '🌟', '💼', '🚀'];
 
-export type Tab = 'f' | 'd' | 'a' | 'm' | 'p';
+export type Tab = 'f' | 'd' | 'a' | 'g' | 'm' | 'p';
 export type CType = 'img' | 'vid' | 'txt';
 export interface Profile { id: string; phone: string; country: string | null; role: 'user' | 'agency' | 'admin'; ref_code: string | null; display_name: string | null; avatar: string | null; credit: number }
-export interface Campaign { id: number; owner: string; agency_advertiser_id?: number | null; title: string; type: CType; content: string | null; media_url: string | null; budget: number; spent: number; status: 'pending' | 'active' | 'done'; country: string | null; created_at?: string; boost_hours: number; boost_until: string | null; credit_used: number; wallet_used?: number; admin_created?: boolean; starts_at: string | null; ends_at: string | null; payment_provider?: 'alphapay' | 'wallet' | null; payment_status?: 'pending' | 'paid' | 'failed' | 'review' | null }
+export interface AgencyWorkspace { id: string; name: string; role: 'owner' | 'admin' | 'member' }
+export interface Campaign { id: number; owner: string; created_by?: string | null; agency_advertiser_id?: number | null; title: string; type: CType; content: string | null; media_url: string | null; budget: number; spent: number; status: 'pending' | 'active' | 'done'; country: string | null; created_at?: string; boost_hours: number; boost_until: string | null; credit_used: number; wallet_used?: number; admin_created?: boolean; starts_at: string | null; ends_at: string | null; payment_provider?: 'alphapay' | 'wallet' | null; payment_status?: 'pending' | 'paid' | 'failed' | 'review' | null }
 export interface Proof {
   id: number; campaign_id: number; user_id: string; image_path: string | null;
   final_image_path?: string | null; posted_at?: string | null; first_submitted_at?: string | null;
@@ -62,6 +63,10 @@ export interface Data {
 }
 export interface Ctx {
   user: User; profile: Profile; d: Data;
+  agencyWorkspaces: AgencyWorkspace[];
+  agencyWorkspaceId: string | null;
+  agencyWorkspaceRole: AgencyWorkspace['role'] | null;
+  selectAgencyWorkspace: (id: string) => void;
   agencyAdvertiserId: number | null;
   selectAgencyAdvertiser: (id: number | null) => void;
   reload: () => Promise<void>;
