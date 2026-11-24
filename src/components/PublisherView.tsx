@@ -254,36 +254,6 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
           await c.reload();
           throw new Error(`${t('wd_check_status')} ${reason instanceof Error ? reason.message : String(reason)}`);
         }
-        function saveAutoWithdrawal() {
-          c.run(async () => {
-            setAutoWithdrawalSaving(true);
-            try {
-              const selectedNetwork = autoCountryNetworks.find((network) => network.code === autoWithdrawalNetwork);
-              const amount = Number(autoWithdrawalAmount);
-              if (autoWithdrawalEnabled) {
-                if (!Number.isSafeInteger(amount) || amount < MIN_WITHDRAW || amount > 2147483647) {
-                  throw new Error(t('wd_auto_amount_invalid'));
-                }
-                if (!selectedNetwork) throw new Error(t('saspay_network_required'));
-                if (!autoWithdrawalPhone.trim()) throw new Error(t('saspay_phone_required'));
-              }
-
-              const result = await sb.rpc('save_withdrawal_auto_settings', {
-                p_enabled: autoWithdrawalEnabled,
-                p_amount: amount,
-                p_operator: selectedNetwork?.name ?? '',
-                p_country: autoWithdrawalCountry,
-                p_network: autoWithdrawalNetwork,
-                p_phone: autoWithdrawalPhone.trim(),
-              });
-              if (result.error) throw result.error;
-              setAutoWithdrawalLastError('');
-              c.say(t(autoWithdrawalEnabled ? 'wd_auto_saved' : 'wd_auto_disabled'));
-            } finally {
-              setAutoWithdrawalSaving(false);
-            }
-          });
-        }
         const result = await response.json() as { status?: string; error?: string };
         if (!response.ok) throw new Error(result.error || 'Impossible de traiter le retrait AlphaPay');
         await c.reload();
@@ -295,6 +265,36 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
           : result.status === 'failed' ? 'saspay_payout_failed' : 'saspay_payout_pending'));
       } finally {
         setWithdrawing(false);
+      }
+    });
+  }
+  function saveAutoWithdrawal() {
+    c.run(async () => {
+      setAutoWithdrawalSaving(true);
+      try {
+        const selectedNetwork = autoCountryNetworks.find((network) => network.code === autoWithdrawalNetwork);
+        const amount = Number(autoWithdrawalAmount);
+        if (autoWithdrawalEnabled) {
+          if (!Number.isSafeInteger(amount) || amount < MIN_WITHDRAW || amount > 2147483647) {
+            throw new Error(t('wd_auto_amount_invalid'));
+          }
+          if (!selectedNetwork) throw new Error(t('saspay_network_required'));
+          if (!autoWithdrawalPhone.trim()) throw new Error(t('saspay_phone_required'));
+        }
+
+        const result = await sb.rpc('save_withdrawal_auto_settings', {
+          p_enabled: autoWithdrawalEnabled,
+          p_amount: amount,
+          p_operator: selectedNetwork?.name ?? '',
+          p_country: autoWithdrawalCountry,
+          p_network: autoWithdrawalNetwork,
+          p_phone: autoWithdrawalPhone.trim(),
+        });
+        if (result.error) throw result.error;
+        setAutoWithdrawalLastError('');
+        c.say(t(autoWithdrawalEnabled ? 'wd_auto_saved' : 'wd_auto_disabled'));
+      } finally {
+        setAutoWithdrawalSaving(false);
       }
     });
   }

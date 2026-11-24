@@ -35,9 +35,7 @@ export async function GET(request: NextRequest) {
       return id;
     });
     const results: { withdrawalId: number; status?: string; error?: string }[] = [];
-    let failed = false;
-
-    for (const withdrawalId of withdrawalIds) {
+    const outcomes = await Promise.all(withdrawalIds.map(async (withdrawalId) => {
       try {
         const response = await fetch(new URL('/api/alphapay/payout', request.url), {
           method: 'POST',
@@ -51,23 +49,23 @@ export async function GET(request: NextRequest) {
         });
         const result = asRecord(await response.json());
         if (!response.ok) {
-          failed = true;
-          console.error('Automatic AlphaPay payout failed', withdrawalId, result.error || response.status);
-          results.push({ withdrawalId, error: String(result.error || `HTTP ${response.status}`) });
-          continue;
+          const message = String(result.error || `HTTP ${response.status}`);
+          console.error('Automatic AlphaPay payout failed', withdrawalId, message);
+          return { withdrawalId, error: message };
         }
-        results.push({
+        return {
           withdrawalId,
           status: typeof result.status === 'string' ? result.status : 'unknown',
           ...(typeof result.error === 'string' ? { error: result.error } : {}),
-        });
+        };
       } catch (reason) {
-        failed = true;
         const message = reason instanceof Error ? reason.message : String(reason);
         console.error('Automatic AlphaPay payout request failed', withdrawalId, message);
-        results.push({ withdrawalId, error: message });
+        return { withdrawalId, error: message };
       }
-    }
+    }));
+    results.push(...outcomes);
+    const failed = outcomes.some((result) => 'error' in result);
 
     return NextResponse.json(
       { processed: results.length, results },

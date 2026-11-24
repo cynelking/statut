@@ -85,6 +85,12 @@ begin
   if auth.uid() is null then raise exception 'Connexion requise'; end if;
   if p_enabled is null then raise exception 'État du retrait automatique invalide'; end if;
 
+  select phone_verified into v_phone_verified
+  from public.profiles
+  where id = auth.uid()
+  for update;
+  if not found then raise exception 'Profil introuvable'; end if;
+
   if not p_enabled then
     update public.withdrawal_auto_settings
     set enabled = false, last_error = null, updated_at = now()
@@ -100,11 +106,6 @@ begin
     raise exception 'Coordonnées Mobile Money invalides';
   end if;
 
-  select phone_verified into v_phone_verified
-  from public.profiles
-  where id = auth.uid()
-  for update;
-  if not found then raise exception 'Profil introuvable'; end if;
   if needs_sms() and not coalesce(v_phone_verified, false) then
     raise exception 'Vérifiez votre numéro par SMS avant d’activer les retraits automatiques';
   end if;
@@ -139,6 +140,7 @@ set search_path = public
 as $$
 declare
   v_setting public.withdrawal_auto_settings%rowtype;
+  v_candidate record;
   v_pending record;
   v_phone_verified boolean;
   v_balance integer;
@@ -151,24 +153,29 @@ begin
     from public.withdrawals
     where automatic and status in ('pending', 'processing')
     order by created_at, id
-    limit 20
+    limit 3
   loop
     withdrawal_id := v_pending.id;
     v_count := v_count + 1;
     return next;
   end loop;
 
-  if v_count >= 20 then return; end if;
+  if v_count >= 3 then return; end if;
 
-  for v_setting in
+  for v_candidate in
     select *
     from public.withdrawal_auto_settings
     where enabled
     order by updated_at, user_id
-    limit 20 - v_count
-    for update skip locked
+    limit 3 - v_count
   loop
-    perform 1 from public.profiles where id = v_setting.user_id for update;
+    perform 1 from public.profiles where id = v_candidate.user_id for update skip locked;
+    if not found then continue; end if;
+
+    select * into v_setting
+    from public.withdrawal_auto_settings
+    where user_id = v_candidate.user_id and enabled
+    for update skip locked;
     if not found then continue; end if;
 
     if exists (
@@ -219,7 +226,7 @@ begin
     returning id into withdrawal_id;
     v_count := v_count + 1;
     return next;
-    if v_count >= 20 then return; end if;
+    if v_count >= 3 then return; end if;
   end loop;
 end
 $$;
