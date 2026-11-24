@@ -3,12 +3,18 @@ import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { sb } from '@/lib/supabase';
 import { useI18n } from '@/lib/i18n';
-import { ADMIN, BOOST_OPTIONS, boostFee, COUNTRIES, CType, Ctx, FEE } from '@/lib/types';
+import { ADMIN, BOOST_OPTIONS, boostFee, Campaign, COUNTRIES, CType, Ctx, FEE } from '@/lib/types';
 import ReportPanel from './ReportPanel';
 import RateForm from './RateForm';
 import AgencyTeamPanel from './AgencyTeamPanel';
 
 interface ToRate { proof_id: number; campaign_id: number; label: string; views: number; reviewed: boolean }
+interface CampaignBudgetIncreaseRequest {
+  id: number;
+  campaign_id: number;
+  requested_by: string;
+  amount: number;
+}
 interface AgencyAdvertiser {
   id: number;
   name: string;
@@ -32,6 +38,10 @@ const imageLoader = ({ src }: { src: string }) => src;
 
 function isHttpsUrl(value: string) {
   try { return new URL(value).protocol === 'https:'; } catch { return false; }
+}
+
+function budgetProgressPercent(spent: number, budget: number) {
+  return budget > 0 ? Math.min(100, Math.max(0, Math.round(spent / budget * 100))) : 0;
 }
 
 export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
@@ -59,6 +69,12 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
   const [rating, setRating] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [payingCampaign, setPayingCampaign] = useState<number | null>(null);
+  const [updatingCampaign, setUpdatingCampaign] = useState<number | null>(null);
+  const [budgetIncreaseCampaign, setBudgetIncreaseCampaign] = useState<number | null>(null);
+  const [budgetIncreaseAmount, setBudgetIncreaseAmount] = useState('');
+  const [budgetIncreaseBusy, setBudgetIncreaseBusy] = useState<number | null>(null);
+  const [budgetIncreaseRequests, setBudgetIncreaseRequests] = useState<CampaignBudgetIncreaseRequest[]>([]);
+  const [budgetIncreaseError, setBudgetIncreaseError] = useState('');
   const [topupAmount, setTopupAmount] = useState('');
   const [topupBusy, setTopupBusy] = useState(false);
   const [agencyClients, setAgencyClients] = useState<AgencyAdvertiser[]>([]);
@@ -72,6 +88,8 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
   const isAgencyWorkspace = c.agencyWorkspaceId !== null && c.agencyWorkspaceRole !== null;
   const isAgencyOwner = c.agencyWorkspaceRole === 'owner';
   const isTeamMember = isAgencyWorkspace && !isAgencyOwner;
+  const canCreateCampaign = !isAgencyWorkspace || isAgencyOwner || c.agencyWorkspaceRole === 'manager';
+  const canManageCampaigns = canCreateCampaign;
   const agencyClientId = c.agencyAdvertiserId === null ? '' : String(c.agencyAdvertiserId);
 
   useEffect(() => {
@@ -109,6 +127,20 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
     setAgencyClients((result.data ?? []) as AgencyAdvertiser[]);
   }, [c.agencyWorkspaceId]);
 
+  const loadBudgetIncreaseRequests = useCallback(async () => {
+    if (!isAgencyWorkspace) {
+      setBudgetIncreaseRequests([]);
+      setBudgetIncreaseError('');
+      return;
+    }
+    const result = await sb.from('campaign_budget_increase_requests')
+      .select('id,campaign_id,requested_by,amount')
+      .eq('status', 'pending');
+    if (result.error) throw result.error;
+    setBudgetIncreaseRequests((result.data ?? []) as CampaignBudgetIncreaseRequest[]);
+    setBudgetIncreaseError('');
+  }, [isAgencyWorkspace]);
+
   useEffect(() => {
     if (!isAgencyWorkspace) {
       setAgencyClients([]);
@@ -128,13 +160,24 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
   }, [isAgencyWorkspace, loadAgencyClients]);
 
   useEffect(() => {
+    let active = true;
+    loadBudgetIncreaseRequests().catch((reason: unknown) => {
+      if (active) setBudgetIncreaseError(reason instanceof Error ? reason.message : String(reason));
+    });
+    return () => { active = false; };
+  }, [loadBudgetIncreaseRequests]);
+
+  useEffect(() => {
     if (!isAgencyWorkspace || agencyClientsLoading) return;
     const selectable = agencyClients.filter((client) => client.status === 'managed' || client.status === 'linked');
     if (selectable.some((client) => client.id === c.agencyAdvertiserId)) return;
     c.selectAgencyAdvertiser(selectable[0]?.id ?? null);
   }, [isAgencyWorkspace, agencyClients, agencyClientsLoading, c.agencyAdvertiserId, c.selectAgencyAdvertiser]);
 
-  async function createAlphaPayCheckout(campaignId: number) {
+  async function createAlphaPayCheckout(campaignId: number, budgetIncrease?: {
+    amount?: number;
+    requestId?: number;
+  }) {
     setPayingCampaign(campaignId);
     try {
       const session = await sb.auth.getSession();
@@ -143,7 +186,11 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
       const response = await fetch('/api/alphapay/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ campaignId }),
+        body: JSON.stringify({
+          campaignId,
+          ...(budgetIncrease?.amount !== undefined ? { budgetIncreaseAmount: budgetIncrease.amount } : {}),
+          ...(budgetIncrease?.requestId !== undefined ? { budgetIncreaseRequestId: budgetIncrease.requestId } : {}),
+        }),
       });
       const result = await response.json() as { checkoutUrl?: string; status?: string; error?: string };
       if (!response.ok) throw new Error(result.error || 'Impossible de créer le paiement AlphaPay');
@@ -153,7 +200,8 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
       }
       if (result.status === 'paid') {
         await c.reload();
-        c.say(t('saspay_return_paid'));
+        if (isAgencyWorkspace) await loadBudgetIncreaseRequests();
+        c.say(t(budgetIncrease ? 'campaign_budget_increase_success' : 'saspay_return_paid'));
         return;
       }
       if (result.status === 'review') {
@@ -164,10 +212,92 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
         c.say(t('saspay_return_failed'));
         return;
       }
+      if (result.status === 'refunded') {
+        await c.reload();
+        c.say(t('campaign_budget_increase_refunded'));
+        return;
+      }
+      if (result.status === 'cancelled') {
+        await c.reload();
+        if (isAgencyWorkspace) await loadBudgetIncreaseRequests();
+        c.say(t('campaign_budget_request_cancelled'));
+        return;
+      }
       throw new Error('La session de paiement AlphaPay est indisponible');
     } finally {
       setPayingCampaign(null);
     }
+  }
+
+  function submitBudgetIncrease(campaign: Campaign) {
+    const amount = Number(budgetIncreaseAmount);
+    if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1000000) {
+      c.say(t('campaign_budget_increase_invalid'));
+      return;
+    }
+    c.run(async () => {
+      setBudgetIncreaseBusy(campaign.id);
+      try {
+        if (isAgencyWorkspace && !isAgencyOwner) {
+          const result = await sb.rpc('request_campaign_budget_increase', {
+            p_campaign_id: campaign.id,
+            p_amount: amount,
+          });
+          if (result.error) throw result.error;
+          setBudgetIncreaseAmount('');
+          setBudgetIncreaseCampaign(null);
+          await loadBudgetIncreaseRequests();
+          c.say(t('campaign_budget_request_sent'));
+          return;
+        }
+        await createAlphaPayCheckout(campaign.id, { amount });
+      } finally {
+        setBudgetIncreaseBusy(null);
+      }
+    });
+  }
+
+  function payBudgetIncreaseRequest(request: CampaignBudgetIncreaseRequest) {
+    c.run(async () => {
+      setBudgetIncreaseBusy(request.campaign_id);
+      try {
+        await createAlphaPayCheckout(request.campaign_id, { requestId: request.id });
+      } finally {
+        setBudgetIncreaseBusy(null);
+      }
+    });
+  }
+
+  function rejectBudgetIncreaseRequest(requestId: number, campaignId: number) {
+    c.run(async () => {
+      setBudgetIncreaseBusy(campaignId);
+      try {
+        const result = await sb.rpc('reject_campaign_budget_increase_request', { p_request_id: requestId });
+        if (result.error) throw result.error;
+        await loadBudgetIncreaseRequests();
+        c.say(t('campaign_budget_request_rejected'));
+      } finally {
+        setBudgetIncreaseBusy(null);
+      }
+    });
+  }
+
+  function toggleCampaignPause(campaign: Campaign) {
+    const shouldPause = campaign.status === 'active';
+    c.run(async () => {
+      setUpdatingCampaign(campaign.id);
+      try {
+        const result = await sb.rpc('set_campaign_paused', {
+          p_campaign_id: campaign.id,
+          p_paused: shouldPause,
+        });
+        if (result.error) throw result.error;
+        await c.reload();
+        c.say(t(shouldPause ? 'campaign_pause_success' : 'campaign_resume_success'));
+      } finally {
+        setUpdatingCampaign(null);
+      }
+    });
   }
 
   function topup() {
@@ -228,6 +358,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
 
   function launch() {
     c.run(async () => {
+      if (!canCreateCampaign) throw new Error(t('agency_reader_no_create'));
       setCreating(true);
       try {
         if (b < 1000 || !title.trim()) throw new Error(t('bmin'));
@@ -376,7 +507,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
                       {c.agencyWorkspaces.map((workspace) => (
                         <option value={workspace.id} key={workspace.id}>
                           {workspace.name} · {t(workspace.role === 'owner' ? 'agency_team_role_owner'
-                            : workspace.role === 'admin' ? 'agency_team_role_admin' : 'agency_team_role_member')}
+                            : workspace.role === 'manager' ? 'agency_team_role_manager' : 'agency_team_role_reader')}
                         </option>
                       ))}
                     </select>
@@ -395,7 +526,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
               </div>
             )}
           </div>
-          <button className="p" type="button" onClick={() => onNavigate?.('create')}>{t('new')} ＋</button>
+          {canCreateCampaign && <button className="p" type="button" onClick={() => onNavigate?.('create')}>{t('new')} ＋</button>}
         </div>
       )}
       {isAgencyOwner && view === 'overview' && (
@@ -450,7 +581,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
               </div>}
         </section>
       )}
-      {view === 'overview' && (isAgencyOwner || c.agencyWorkspaceRole === 'admin') && (
+      {view === 'overview' && (isAgencyOwner || c.agencyWorkspaceRole === 'manager') && (
         <AgencyTeamPanel c={c} clients={agencyClients} />
       )}
       {view === 'overview' && (
@@ -465,13 +596,24 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
             <div className="dashboard-card-title"><h2>{t('myc')}</h2><button className="s" type="button" onClick={() => onNavigate?.('campaigns')}>{t('myc')}</button></div>
             {mine.length === 0 && <p className="m">{t('none')}</p>}
             <div className="campaign-list">
-              {mine.slice(0, 3).map((campaign) => (
-                <div className="campaign-item" key={campaign.id}>
-                  <div className="product-thumb">{campaign.type === 'img' ? '▧' : campaign.type === 'vid' ? '▷' : '≡'}</div>
-                  <div><strong>{campaign.title}</strong><div className="m">{t(campaign.type)} · {campaign.country ?? t('all_c')}</div><div className="progress"><span style={{ width: `${Math.min(100, Math.round((campaign.spent / campaign.budget) * 100))}%` }} /></div></div>
-                  <span className={'tag ' + (campaign.status === 'active' ? 'ok' : campaign.status === 'pending' ? 'w' : '')}>{t(`st_${campaign.status}`)}</span>
-                </div>
-              ))}
+              {mine.slice(0, 3).map((campaign) => {
+                const progress = budgetProgressPercent(campaign.spent, campaign.budget);
+                return (
+                  <div className="campaign-item" key={campaign.id}>
+                    <div className="product-thumb">{campaign.type === 'img' ? '▧' : campaign.type === 'vid' ? '▷' : '≡'}</div>
+                    <div>
+                      <strong>{campaign.title}</strong>
+                      <div className="m">{t(campaign.type)} · {campaign.country ?? t('all_c')}</div>
+                      <div className="progress" role="progressbar" aria-label={`${t('budget_progress')}: ${progress}%`}
+                        aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+                        <span style={{ width: `${progress}%` }} />
+                      </div>
+                      <div className="m">{progress}% {t('budget_progress')} · {f(Math.max(0, campaign.budget - campaign.spent))} {t('rest')}</div>
+                    </div>
+                    <span className={'tag ' + (campaign.status === 'active' ? 'ok' : campaign.status === 'pending' ? 'w' : '')}>{t(`st_${campaign.status}`)}</span>
+                  </div>
+                );
+              })}
             </div>
           </section>
           {!isAgencyWorkspace && <section className="card advertiser-financing">
@@ -481,10 +623,15 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
           </section>}
         </section>
       )}
-      {view === 'create' && (
+      {view === 'create' && canCreateCampaign && (
         <div className="page-head advertiser-create-only">
           <div><div className="eyebrow">{isAgencyWorkspace ? t('agency_account') : t('r_a')}</div><h1>{t('new')}</h1><p className="sub">{t('configure_campaign')}</p></div>
         </div>
+      )}
+      {view === 'create' && !canCreateCampaign && (
+        <section className="card advertiser-create-only" role="status">
+          <p className="m">{t('agency_reader_no_create')}</p>
+        </section>
       )}
       {!isAgencyWorkspace && <section className="card advertiser-create-only">
         <h2>{t('credit')} · {f(credit)}</h2>
@@ -507,7 +654,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
         </button>
       </form>}
 
-      <form className="card advertiser-create-only" onSubmit={(e) => { e.preventDefault(); launch(); }}>
+      {canCreateCampaign && <form className="card advertiser-create-only" onSubmit={(e) => { e.preventDefault(); launch(); }}>
         <div className="steps" aria-label="Étapes de création">
           <div className="step active"><b>1</b>{t('title')}</div><div className="step-line" />
           <div className="step"><b>2</b>{t('target')}</div><div className="step-line" />
@@ -595,7 +742,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
               {t('to_pay')} : <b>{f(due)}</b>{ends && !isAgencyWorkspace && <><br /><span className="m">{t('refund_note')}</span></>}</>}
         </p>
         <button className="p" type="submit" disabled={creating || (isAgencyWorkspace && (agencyClientsLoading || !agencyClientId))}>{t('launch')}</button>
-      </form>
+      </form>}
 
       {!isTeamMember && toRate.length > 0 && (
         <section className="card advertiser-overview-only">
@@ -612,9 +759,15 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
 
       <section className="card advertiser-campaign-list">
         <h2>{t('myc')}</h2>
+        {budgetIncreaseError && <p className="err" role="alert">{budgetIncreaseError}</p>}
         {mine.length === 0 && <p className="m">{t('none')}</p>}
         {mine.map((x, i) => {
           const owed = x.admin_created ? 0 : x.budget + FEE + boostFee(x.boost_hours) - x.credit_used - (x.wallet_used || 0);
+          const budgetRequest = budgetIncreaseRequests.find((request) => request.campaign_id === x.id);
+          const budgetProgress = budgetProgressPercent(x.spent, x.budget);
+          const canIncreaseBudget = !x.admin_created
+            && (x.status === 'active' || x.status === 'paused')
+            && (canManageCampaigns || isTeamMember);
           return (
             <div className={'row' + (i === 0 ? ' first' : '')} style={{ display: 'block' }} key={x.id}>
               <b>{x.title}</b>{' '}
@@ -625,6 +778,64 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
               <span className={'tag ' + (x.status === 'active' ? 'ok' : x.status === 'pending' ? 'w' : '')}>{t('st_' + x.status)}</span>{' '}
               {x.boost_hours > 0 && <span className="tag boost">{t('sponsored')} · {t(`boost_${x.boost_hours}`)}</span>}
               <div className="m">{f(x.spent)} / {f(x.budget)} {t('spent')} · {x.country ?? t('all_c')}{x.starts_at ? ' · ' + t('starts_on') + ' ' + x.starts_at.slice(0, 10) : ''}{x.ends_at ? ' · ' + t('ends_in') + ' ' + new Date(Date.parse(x.ends_at) - 1).toISOString().slice(0, 10) : ''}</div>
+              {canManageCampaigns && (x.status === 'active' || x.status === 'paused') && (
+                <button className="s" type="button" style={{ marginTop: 10 }} disabled={updatingCampaign !== null}
+                  onClick={() => toggleCampaignPause(x)}>
+                  {updatingCampaign === x.id ? '…' : t(x.status === 'active' ? 'campaign_pause' : 'campaign_resume')}
+                </button>
+              )}
+              {x.status === 'paused' && <p className="m">{t('campaign_paused_hint')}</p>}
+              {budgetRequest && isAgencyOwner && (
+                <div className="note" role="status">
+                  <p>{t('campaign_budget_request_title')}: {f(budgetRequest.amount)}</p>
+                  <button className="s on" type="button" disabled={budgetIncreaseBusy !== null}
+                    onClick={() => payBudgetIncreaseRequest(budgetRequest)}>
+                    {budgetIncreaseBusy === x.id ? '…' : t('campaign_budget_request_pay')}
+                  </button>{' '}
+                  <button className="s" type="button" disabled={budgetIncreaseBusy !== null}
+                    onClick={() => rejectBudgetIncreaseRequest(budgetRequest.id, x.id)}>
+                    {t('campaign_budget_request_reject')}
+                  </button>
+                </div>
+              )}
+              {budgetRequest && !isAgencyOwner && (
+                <p className="note" role="status">
+                  {t('campaign_budget_request_pending')} · {f(budgetRequest.amount)}
+                </p>
+              )}
+              {canIncreaseBudget && !budgetRequest && (
+                <>
+                  <button className="s" type="button" style={{ marginTop: 10 }}
+                    onClick={() => {
+                      setBudgetIncreaseCampaign(budgetIncreaseCampaign === x.id ? null : x.id);
+                      setBudgetIncreaseAmount('');
+                    }}>
+                    {t('campaign_budget_increase')}
+                  </button>
+                  {budgetIncreaseCampaign === x.id && (
+                    <form className="grid2" style={{ marginTop: 12 }}
+                      onSubmit={(event) => { event.preventDefault(); submitBudgetIncrease(x); }}>
+                      <div>
+                        <label htmlFor={`budget-increase-${x.id}`}>{t('campaign_budget_increase_label')}</label>
+                        <input id={`budget-increase-${x.id}`} type="number" min="1" max="1000000" step="1"
+                          inputMode="numeric" value={budgetIncreaseAmount}
+                          onChange={(event) => setBudgetIncreaseAmount(event.target.value)} required />
+                      </div>
+                      <div>
+                        <p className="m">
+                          {isAgencyWorkspace && !isAgencyOwner
+                            ? t('campaign_budget_increase_agency_hint')
+                            : t('campaign_budget_increase_payment_hint')}
+                        </p>
+                        <button className="s on" type="submit"
+                          disabled={budgetIncreaseBusy !== null || payingCampaign === x.id}>
+                          {budgetIncreaseBusy === x.id || payingCampaign === x.id ? '…' : t('campaign_budget_increase_submit')}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </>
+              )}
               {x.status === 'pending' && x.payment_provider !== 'alphapay' ? (
                 isAgencyOwner ? (
                   <div>
@@ -652,7 +863,11 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
                 </div>
               ) : (
                 <>
-                  <div className="bar"><i style={{ width: Math.round((x.spent / x.budget) * 100) + '%' }} /></div>
+                  <div className="bar" role="progressbar" aria-label={`${t('budget_progress')}: ${budgetProgress}%`}
+                    aria-valuemin={0} aria-valuemax={100} aria-valuenow={budgetProgress}>
+                    <i style={{ width: `${budgetProgress}%` }} />
+                  </div>
+                  <p className="m">{budgetProgress}% {t('budget_progress')} · {f(Math.max(0, x.budget - x.spent))} {t('rest')}</p>
                   <button className="s" style={{ marginTop: 10 }} onClick={() => setReport(report === x.id ? null : x.id)}>{t('report')}</button>
                   {report === x.id && <ReportPanel id={x.id} teamMember={isTeamMember} />}
                 </>

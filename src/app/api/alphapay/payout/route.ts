@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { alphaPayRequest, asRecord, errorResponse, getAdminClient, getAlphaPayConfig, getRequestUser, getUserClient, listAlphaPayNetworks } from '@/lib/alphapay-server';
 import { COUNTRY_CALLING_CODES, currencyForCountry } from '@/lib/alphapay';
@@ -16,23 +17,41 @@ function pendingResponse(withdrawalId: number, error: string) {
   return NextResponse.json({ withdrawalId, status: 'pending', error }, { status: 202 });
 }
 
+function isCronRequest(request: NextRequest) {
+  const secret = process.env.CRON_SECRET;
+  const authorization = request.headers.get('authorization') || '';
+  const expected = secret ? `Bearer ${secret}` : '';
+  return Boolean(secret)
+    && authorization.length === expected.length
+    && timingSafeEqual(Buffer.from(authorization), Buffer.from(expected));
+}
+
 export async function POST(request: NextRequest) {
   let createdWithdrawalId: number | null = null;
   try {
-    const auth = await getRequestUser(request);
-    if (!auth) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    const cronRequest = isCronRequest(request);
+    const auth = cronRequest ? null : await getRequestUser(request);
+    if (!cronRequest && !auth) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-    const userClient = getUserClient(auth.token);
-    const { data: profile, error: profileError } = await userClient
-      .from('profiles')
-      .select('role')
-      .eq('id', auth.user.id)
-      .single();
-    if (profileError) throw profileError;
+    const userClient = auth ? getUserClient(auth.token) : null;
+    const admin = getAdminClient();
+    let profileRole: string | null = null;
+    if (auth && userClient) {
+      const { data: profile, error: profileError } = await userClient
+        .from('profiles')
+        .select('role')
+        .eq('id', auth.user.id)
+        .single();
+      if (profileError) throw profileError;
+      profileRole = profile.role;
+    }
 
     const body = asRecord(await request.json());
     let withdrawalId = Number(body.withdrawalId);
     if (!Number.isSafeInteger(withdrawalId) || withdrawalId < 1) {
+      if (!userClient || !auth) {
+        return NextResponse.json({ error: 'withdrawalId requis' }, { status: 400 });
+      }
       const amount = Number(body.amount);
       const country = typeof body.country === 'string' ? body.country : '';
       const network = typeof body.network === 'string' ? body.network : '';
@@ -56,14 +75,16 @@ export async function POST(request: NextRequest) {
       createdWithdrawalId = withdrawalId;
     }
 
-    const admin = getAdminClient();
     const { data: withdrawal, error: withdrawalError } = await admin.from('withdrawals')
-      .select('user_id')
+      .select('user_id,automatic')
       .eq('id', withdrawalId)
       .maybeSingle();
     if (withdrawalError) throw withdrawalError;
     if (!withdrawal) return NextResponse.json({ error: 'Retrait introuvable' }, { status: 404 });
-    if (withdrawal.user_id !== auth.user.id && profile.role !== 'admin') {
+    if (cronRequest && !withdrawal.automatic) {
+      return NextResponse.json({ error: 'Retrait automatique introuvable' }, { status: 404 });
+    }
+    if (auth && withdrawal.user_id !== auth.user.id && profileRole !== 'admin') {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     }
 
@@ -82,19 +103,29 @@ export async function POST(request: NextRequest) {
     }
 
     const networks = await listAlphaPayNetworks();
-    const claimed = await userClient.rpc('claim_saspay_payout', { p_withdrawal_id: withdrawalId });
+    const payoutClient = cronRequest ? admin : userClient;
+    if (!payoutClient) throw new Error('Client de paiement indisponible');
+    const claimed = await payoutClient.rpc(
+      cronRequest ? 'claim_auto_saspay_payout' : 'claim_saspay_payout',
+      { p_withdrawal_id: withdrawalId },
+    );
     if (claimed.error) throw claimed.error;
     const payout = asRecord(claimed.data);
     const country = String(payout.country || '');
     const network = String(payout.network || '');
     const recipientPhone = String(payout.phone || '');
     if (!networks.networks.some((item) => item.code === network && item.country === country && item.is_active)) {
-      const admin = getAdminClient();
-      await admin.from('withdrawals')
-        .update({ status: 'pending', saspay_idempotency_key: null })
-        .eq('id', withdrawalId)
-        .eq('status', 'processing')
-        .is('saspay_payout_id', null);
+      if (cronRequest) {
+        const failed = await admin.rpc('fail_auto_saspay_payout', { p_withdrawal_id: withdrawalId });
+        if (failed.error) throw failed.error;
+      } else {
+        const released = await admin.from('withdrawals')
+          .update({ status: 'pending', saspay_idempotency_key: null })
+          .eq('id', withdrawalId)
+          .eq('status', 'processing')
+          .is('saspay_payout_id', null);
+        if (released.error) throw released.error;
+      }
       const message = 'Le réseau de paiement n’est plus disponible. Demandez au diffuseur de refaire sa demande.';
       return createdWithdrawalId !== null
         ? pendingResponse(withdrawalId, message)
@@ -102,11 +133,17 @@ export async function POST(request: NextRequest) {
     }
     const callingCode = COUNTRY_CALLING_CODES[country];
     if (!callingCode || !recipientPhone) {
-      await getAdminClient().from('withdrawals')
-        .update({ status: 'pending', saspay_idempotency_key: null })
-        .eq('id', withdrawalId)
-        .eq('status', 'processing')
-        .is('saspay_payout_id', null);
+      if (cronRequest) {
+        const failed = await admin.rpc('fail_auto_saspay_payout', { p_withdrawal_id: withdrawalId });
+        if (failed.error) throw failed.error;
+      } else {
+        const released = await admin.from('withdrawals')
+          .update({ status: 'pending', saspay_idempotency_key: null })
+          .eq('id', withdrawalId)
+          .eq('status', 'processing')
+          .is('saspay_payout_id', null);
+        if (released.error) throw released.error;
+      }
       throw new Error('Pays ou numéro Mobile Money manquant');
     }
 
@@ -134,11 +171,15 @@ export async function POST(request: NextRequest) {
 
     let providerResult: Record<string, unknown>;
     try {
+      const payoutAmount = Number(payout.payout_amount ?? payout.amount);
+      if (!Number.isSafeInteger(payoutAmount) || payoutAmount < 1) {
+        throw new Error('Montant net du retrait invalide');
+      }
       providerResult = asRecord(await alphaPayRequest('/payouts/initialize/', {
         method: 'POST',
         headers: { 'Idempotency-Key': String(payout.idempotency_key) },
         body: JSON.stringify({
-          amount: Number(payout.amount).toFixed(2),
+          amount: payoutAmount.toFixed(2),
           currency: currencyForCountry(country),
           country,
           description: `Retrait StatutPay #${withdrawalId}`,
@@ -155,11 +196,17 @@ export async function POST(request: NextRequest) {
     } catch (reason) {
       const status = (reason as { status?: number } | null)?.status;
       if (typeof status === 'number' && status < 500) {
-        await admin.from('withdrawals')
-          .update({ status: 'pending', saspay_idempotency_key: null })
-          .eq('id', withdrawalId)
-          .eq('status', 'processing')
-          .is('saspay_payout_id', null);
+        if (cronRequest) {
+          const failed = await admin.rpc('fail_auto_saspay_payout', { p_withdrawal_id: withdrawalId });
+          if (failed.error) throw failed.error;
+        } else {
+          const released = await admin.from('withdrawals')
+            .update({ status: 'pending', saspay_idempotency_key: null })
+            .eq('id', withdrawalId)
+            .eq('status', 'processing')
+            .is('saspay_payout_id', null);
+          if (released.error) throw released.error;
+        }
       }
       throw reason;
     }

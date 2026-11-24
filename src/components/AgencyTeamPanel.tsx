@@ -11,7 +11,7 @@ interface TeamMember {
   user_id: string | null;
   member_name: string | null;
   member_phone: string | null;
-  role: 'admin' | 'member';
+  role: 'manager' | 'reader';
   status: 'pending' | 'accepted' | 'declined' | 'revoked';
   expires_at: string;
 }
@@ -33,7 +33,7 @@ export default function AgencyTeamPanel({ c, clients }: { c: Ctx; clients: Clien
   const [assignments, setAssignments] = useState<Record<number, number[]>>({});
   const [draftAssignments, setDraftAssignments] = useState<Record<number, number[]>>({});
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'admin' | 'member'>('member');
+  const [role, setRole] = useState<'manager' | 'reader'>('reader');
   const [shareUrl, setShareUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -144,7 +144,7 @@ export default function AgencyTeamPanel({ c, clients }: { c: Ctx; clients: Clien
     });
   }
 
-  function changeRole(member: TeamMember, nextRole: 'admin' | 'member') {
+  function changeRole(member: TeamMember, nextRole: 'manager' | 'reader') {
     c.run(async () => {
       setSavingMemberId(member.id);
       setError('');
@@ -154,7 +154,8 @@ export default function AgencyTeamPanel({ c, clients }: { c: Ctx; clients: Clien
           p_role: nextRole,
         });
         if (result.error) throw result.error;
-        await loadTeam();
+        if (member.user_id === c.user.id) await c.reload();
+        else await loadTeam();
         c.say(t('agency_team_role_saved'));
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : t('agency_team_error'));
@@ -173,7 +174,10 @@ export default function AgencyTeamPanel({ c, clients }: { c: Ctx; clients: Clien
       try {
         const result = await sb.rpc('remove_agency_team_member', { p_team_member_id: member.id });
         if (result.error) throw result.error;
-        await loadTeam();
+        if (member.user_id === c.user.id) {
+          await c.reload();
+          c.go('d');
+        } else await loadTeam();
         c.say(t('agency_team_removed'));
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : t('agency_team_error'));
@@ -228,9 +232,9 @@ export default function AgencyTeamPanel({ c, clients }: { c: Ctx; clients: Clien
           <input id="agency-team-phone" type="tel" inputMode="tel" placeholder="+228 90 00 00 00"
             value={phone} onChange={(event) => setPhone(event.target.value)} required />
           <label htmlFor="agency-team-phone-role">{t('agency_team_role')}</label>
-          <select id="agency-team-phone-role" value={role} onChange={(event) => setRole(event.target.value as 'admin' | 'member')}>
-            <option value="member">{t('agency_team_role_member')}</option>
-            <option value="admin">{t('agency_team_role_admin')}</option>
+          <select id="agency-team-phone-role" value={role} onChange={(event) => setRole(event.target.value as 'manager' | 'reader')}>
+            <option value="reader">{t('agency_team_role_reader')}</option>
+            <option value="manager">{t('agency_team_role_manager')}</option>
           </select>
           <button className="s" type="submit" disabled={busy || !phone.trim()}>
             {busy ? '…' : t('agency_team_invite_send')}
@@ -239,9 +243,9 @@ export default function AgencyTeamPanel({ c, clients }: { c: Ctx; clients: Clien
         <div>
           <h3>{t('agency_team_invite_link')}</h3>
           <label htmlFor="agency-team-link-role">{t('agency_team_role')}</label>
-          <select id="agency-team-link-role" value={role} onChange={(event) => setRole(event.target.value as 'admin' | 'member')}>
-            <option value="member">{t('agency_team_role_member')}</option>
-            <option value="admin">{t('agency_team_role_admin')}</option>
+          <select id="agency-team-link-role" value={role} onChange={(event) => setRole(event.target.value as 'manager' | 'reader')}>
+            <option value="reader">{t('agency_team_role_reader')}</option>
+            <option value="manager">{t('agency_team_role_manager')}</option>
           </select>
           <button className="s" type="button" disabled={busy} onClick={createLink}>
             {busy ? '…' : t('agency_team_link_create')}
@@ -272,16 +276,16 @@ export default function AgencyTeamPanel({ c, clients }: { c: Ctx; clients: Clien
                   <div className="row">
                     <div>
                       <b>{member.member_name || member.member_phone || t('agency_team_link_pending')}</b>
-                      <span className="tag">{t(member.role === 'admin' ? 'agency_team_role_admin' : 'agency_team_role_member')}</span>
+                      <span className="tag">{t(member.role === 'manager' ? 'agency_team_role_manager' : 'agency_team_role_reader')}</span>
                       <span className="tag">{t(expired ? 'agency_team_expired' : `agency_team_status_${member.status}`)}</span>
                       {member.member_phone && <div className="m">{member.member_phone}</div>}
                     </div>
                     <div className="actions">
                       <select id={`agency-team-role-${member.id}`} value={member.role} disabled={savingMemberId === member.id}
                         aria-label={t('agency_team_role')}
-                        onChange={(event) => changeRole(member, event.target.value as 'admin' | 'member')}>
-                        <option value="member">{t('agency_team_role_member')}</option>
-                        <option value="admin">{t('agency_team_role_admin')}</option>
+                        onChange={(event) => changeRole(member, event.target.value as 'manager' | 'reader')}>
+                        <option value="reader">{t('agency_team_role_reader')}</option>
+                        <option value="manager">{t('agency_team_role_manager')}</option>
                       </select>
                       <button className="s" type="button" disabled={savingMemberId === member.id}
                         onClick={() => removeMember(member)}>{t('agency_team_remove')}</button>

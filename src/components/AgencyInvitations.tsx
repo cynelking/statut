@@ -15,7 +15,7 @@ interface TeamInvitation {
   id: number;
   agency_id: string;
   agency_name: string;
-  role: 'admin' | 'member';
+  role: 'manager' | 'reader';
   expires_at: string;
 }
 
@@ -127,7 +127,7 @@ export default function AgencyInvitations({ c }: { c: Ctx }) {
         <div className="row" key={`team-${invitation.id}`}>
           <div>
             <b>{invitation.agency_name}</b> {t('agency_team_invited')}
-            <p className="m">{t(invitation.role === 'admin' ? 'agency_team_role_admin' : 'agency_team_role_member')}</p>
+            <p className="m">{t(invitation.role === 'manager' ? 'agency_team_role_manager' : 'agency_team_role_reader')}</p>
           </div>
           <div className="actions">
             <button type="button" className="p" disabled={workingId !== null}

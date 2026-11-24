@@ -31,6 +31,13 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
   const [withdrawCountry, setWithdrawCountry] = useState(COUNTRY_CODES[c.profile.country || ''] || '');
   const [withdrawNetwork, setWithdrawNetwork] = useState('');
   const [recipientPhone, setRecipientPhone] = useState(c.profile.phone);
+  const [autoWithdrawalEnabled, setAutoWithdrawalEnabled] = useState(false);
+  const [autoWithdrawalAmount, setAutoWithdrawalAmount] = useState('');
+  const [autoWithdrawalCountry, setAutoWithdrawalCountry] = useState(COUNTRY_CODES[c.profile.country || ''] || '');
+  const [autoWithdrawalNetwork, setAutoWithdrawalNetwork] = useState('');
+  const [autoWithdrawalPhone, setAutoWithdrawalPhone] = useState(c.profile.phone);
+  const [autoWithdrawalLastError, setAutoWithdrawalLastError] = useState('');
+  const [autoWithdrawalSaving, setAutoWithdrawalSaving] = useState(false);
   const [networkError, setNetworkError] = useState('');
   const [rating, setRating] = useState<number | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
@@ -49,6 +56,12 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
   const countryNetworks = payNetworks.filter((network) =>
     network.country === withdrawCountry && network.is_active,
   );
+  const autoCountryNetworks = payNetworks.filter((network) =>
+    network.country === autoWithdrawalCountry && network.is_active,
+  );
+  const autoWithdrawalGross = Number(autoWithdrawalAmount) || 0;
+  const autoWithdrawalFee = withdrawalFee(autoWithdrawalGross);
+  const autoWithdrawalNet = Math.max(0, autoWithdrawalGross - autoWithdrawalFee);
   const withdrawalFeeAmount = withdrawalFee(c.d.bal);
   const payoutAmount = Math.max(0, c.d.bal - withdrawalFeeAmount);
   const proofUploadInProgress = proofTransfer !== null
@@ -71,11 +84,16 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
       const session = await sb.auth.getSession();
       const token = session.data.session?.access_token;
       if (!token) throw new Error('Connectez-vous pour charger les réseaux de retrait');
-      const response = await fetch('/api/alphapay/networks', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const [response, autoSettings] = await Promise.all([
+        fetch('/api/alphapay/networks', { headers: { Authorization: `Bearer ${token}` } }),
+        sb.from('withdrawal_auto_settings')
+          .select('enabled,amount,operator,recipient_country,recipient_network,recipient_phone,last_error')
+          .eq('user_id', c.user.id)
+          .maybeSingle(),
+      ]);
       const result = await response.json() as { countries?: AlphaPayCountry[]; networks?: AlphaPayNetwork[]; error?: string };
       if (!response.ok) throw new Error(result.error || 'Impossible de charger les réseaux AlphaPay');
+      if (autoSettings.error) throw autoSettings.error;
       if (!active) return;
       const countries = result.countries ?? [];
       const networks = result.networks ?? [];
@@ -88,6 +106,16 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
       const selectedCountry = countries.some((country) => country.iso_code === preferred) ? preferred : firstCountry;
       setWithdrawCountry(selectedCountry);
       setWithdrawNetwork(networks.find((network) => network.country === selectedCountry && network.is_active)?.code || '');
+      const saved = autoSettings.data;
+      const selectedAutoCountry = saved?.recipient_country || selectedCountry;
+      setAutoWithdrawalEnabled(saved?.enabled ?? false);
+      setAutoWithdrawalAmount(saved ? String(saved.amount) : '');
+      setAutoWithdrawalCountry(selectedAutoCountry);
+      setAutoWithdrawalNetwork(saved?.recipient_network
+        || networks.find((network) => network.country === selectedAutoCountry && network.is_active)?.code
+        || '');
+      setAutoWithdrawalPhone(saved?.recipient_phone || c.profile.phone);
+      setAutoWithdrawalLastError(saved?.last_error || '');
     })().catch((reason: unknown) => {
       if (active) setNetworkError(reason instanceof Error ? reason.message : String(reason));
     });
@@ -225,6 +253,36 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
         } catch (reason) {
           await c.reload();
           throw new Error(`${t('wd_check_status')} ${reason instanceof Error ? reason.message : String(reason)}`);
+        }
+        function saveAutoWithdrawal() {
+          c.run(async () => {
+            setAutoWithdrawalSaving(true);
+            try {
+              const selectedNetwork = autoCountryNetworks.find((network) => network.code === autoWithdrawalNetwork);
+              const amount = Number(autoWithdrawalAmount);
+              if (autoWithdrawalEnabled) {
+                if (!Number.isSafeInteger(amount) || amount < MIN_WITHDRAW || amount > 2147483647) {
+                  throw new Error(t('wd_auto_amount_invalid'));
+                }
+                if (!selectedNetwork) throw new Error(t('saspay_network_required'));
+                if (!autoWithdrawalPhone.trim()) throw new Error(t('saspay_phone_required'));
+              }
+
+              const result = await sb.rpc('save_withdrawal_auto_settings', {
+                p_enabled: autoWithdrawalEnabled,
+                p_amount: amount,
+                p_operator: selectedNetwork?.name ?? '',
+                p_country: autoWithdrawalCountry,
+                p_network: autoWithdrawalNetwork,
+                p_phone: autoWithdrawalPhone.trim(),
+              });
+              if (result.error) throw result.error;
+              setAutoWithdrawalLastError('');
+              c.say(t(autoWithdrawalEnabled ? 'wd_auto_saved' : 'wd_auto_disabled'));
+            } finally {
+              setAutoWithdrawalSaving(false);
+            }
+          });
         }
         const result = await response.json() as { status?: string; error?: string };
         if (!response.ok) throw new Error(result.error || 'Impossible de traiter le retrait AlphaPay');
@@ -515,6 +573,42 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
         <p className="m">{t('wd_proof_only')}</p>
         <button className="p" disabled={withdrawing || c.d.bal < MIN_WITHDRAW || !withdrawNetwork || !!networkError} onClick={withdraw}>{withdrawing ? '…' : `${t('wdb')} ${f(payoutAmount)}`}</button>
         <p className="m">{t('saspay_payout_auto_note')}</p>
+      </section>
+
+      <section className="card wallet-only">
+        <h2>{t('wd_auto_title')}</h2>
+        <p className="m">{t('wd_auto_description')}</p>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 500 }}>
+          <input type="checkbox" checked={autoWithdrawalEnabled}
+            onChange={(event) => setAutoWithdrawalEnabled(event.target.checked)} />
+          {t('wd_auto_enable')}
+        </label>
+        <label htmlFor="auto-withdrawal-amount">{t('wd_auto_amount')}</label>
+        <input id="auto-withdrawal-amount" type="number" min={MIN_WITHDRAW} max="2147483647" step="1"
+          inputMode="numeric" value={autoWithdrawalAmount}
+          onChange={(event) => setAutoWithdrawalAmount(event.target.value)} />
+        <p className="m">{t('wd_gross_label')}: <b>{f(autoWithdrawalGross)}</b> · {t('wd_fee_label')}: <b>{f(autoWithdrawalFee)}</b> · {t('wd_net_label')}: <b>{f(autoWithdrawalNet)}</b></p>
+        <label htmlFor="auto-withdraw-country">{t('country')}</label>
+        <select id="auto-withdraw-country" value={autoWithdrawalCountry} onChange={(event) => {
+          const nextCountry = event.target.value;
+          setAutoWithdrawalCountry(nextCountry);
+          setAutoWithdrawalNetwork(payNetworks.find((network) => network.country === nextCountry && network.is_active)?.code || '');
+        }}>
+          {activeCountries.map((country) => <option key={country.iso_code} value={country.iso_code}>{country.name} · {country.default_currency}</option>)}
+        </select>
+        <label htmlFor="auto-withdraw-network">{t('op')}</label>
+        <select id="auto-withdraw-network" value={autoWithdrawalNetwork} onChange={(event) => setAutoWithdrawalNetwork(event.target.value)}>
+          {autoCountryNetworks.map((network) => <option key={network.code} value={network.code}>{network.name}</option>)}
+        </select>
+        <label htmlFor="auto-withdraw-phone">{t('saspay_recipient_phone')}</label>
+        <input id="auto-withdraw-phone" type="tel" autoComplete="tel" value={autoWithdrawalPhone}
+          onChange={(event) => setAutoWithdrawalPhone(event.target.value)} />
+        {autoWithdrawalLastError && <p className="err" role="alert">{autoWithdrawalLastError}</p>}
+        {!autoWithdrawalEnabled && <p className="m">{t('wd_auto_pending_note')}</p>}
+        <button className="p" type="button" disabled={autoWithdrawalSaving || !!networkError}
+          onClick={saveAutoWithdrawal}>
+          {autoWithdrawalSaving ? '…' : t('wd_auto_save')}
+        </button>
       </section>
     </div>
   );

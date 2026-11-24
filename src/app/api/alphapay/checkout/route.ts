@@ -15,13 +15,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'campaignId invalide' }, { status: 400 });
     }
 
+    const hasBudgetIncreaseAmount = body.budgetIncreaseAmount !== undefined;
+    const hasBudgetIncreaseRequestId = body.budgetIncreaseRequestId !== undefined;
+    if (hasBudgetIncreaseAmount && hasBudgetIncreaseRequestId) {
+      return NextResponse.json({ error: 'Choisissez une seule augmentation de budget' }, { status: 400 });
+    }
+    const budgetIncreaseAmount = hasBudgetIncreaseAmount ? Number(body.budgetIncreaseAmount) : null;
+    const budgetIncreaseRequestId = hasBudgetIncreaseRequestId ? Number(body.budgetIncreaseRequestId) : null;
+    if (budgetIncreaseAmount !== null
+      && (!Number.isSafeInteger(budgetIncreaseAmount) || budgetIncreaseAmount < 1 || budgetIncreaseAmount > 1000000)) {
+      return NextResponse.json({ error: 'Montant d’augmentation invalide' }, { status: 400 });
+    }
+    if (budgetIncreaseRequestId !== null
+      && (!Number.isSafeInteger(budgetIncreaseRequestId) || budgetIncreaseRequestId < 1)) {
+      return NextResponse.json({ error: 'Demande d’augmentation invalide' }, { status: 400 });
+    }
+
     const userClient = getUserClient(auth.token);
-    const intentResult = await userClient.rpc('start_saspay_campaign_payment', { p_campaign_id: campaignId });
+    const intentResult = budgetIncreaseAmount !== null
+      ? await userClient.rpc('start_campaign_budget_increase_payment', {
+        p_campaign_id: campaignId,
+        p_amount: budgetIncreaseAmount,
+      })
+      : budgetIncreaseRequestId !== null
+        ? await userClient.rpc('start_campaign_budget_increase_request_payment', {
+          p_request_id: budgetIncreaseRequestId,
+        })
+        : await userClient.rpc('start_saspay_campaign_payment', { p_campaign_id: campaignId });
     if (intentResult.error) throw intentResult.error;
     const intent = asRecord(intentResult.data);
+    if (intent.status === 'succeeded') return NextResponse.json({ status: 'paid' });
+    if (intent.status === 'cancelled') return NextResponse.json({ status: 'cancelled' });
     const paymentId = String(intent.payment_id || '');
     if (!paymentId) throw new Error('Impossible de créer le paiement de la campagne');
-    if (intent.status === 'succeeded') return NextResponse.json({ status: 'paid' });
     if (intent.status === 'review') return NextResponse.json({ status: 'review' });
 
     if (typeof intent.checkout_session_id === 'string' && intent.checkout_session_id) {
@@ -60,13 +86,20 @@ export async function POST(request: NextRequest) {
           amount: Number(intent.amount).toFixed(2),
           currency: intent.currency,
           country: intent.country,
-          description: `Campagne StatutPay #${campaignId}`,
+          description: budgetIncreaseAmount !== null || budgetIncreaseRequestId !== null
+            ? `Augmentation du budget de la campagne StatutPay #${campaignId}`
+            : `Campagne StatutPay #${campaignId}`,
           customer_email: email,
           customer_name: name,
           customer_phone: auth.user.phone || '',
           return_url: `${appBaseUrl}/?alphapay_payment_id=${encodeURIComponent(paymentId)}`,
           fee_charge_mode: 'ADD_ON',
-          metadata: { statutpay_payment_id: paymentId, campaign_id: campaignId },
+          metadata: {
+            statutpay_payment_id: paymentId,
+            campaign_id: campaignId,
+            ...(budgetIncreaseAmount !== null || budgetIncreaseRequestId !== null
+              ? { payment_purpose: 'budget_increase' } : {}),
+          },
         }),
       }));
 

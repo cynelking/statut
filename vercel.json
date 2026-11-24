@@ -3,6 +3,10 @@
     {
       "path": "/api/proof-reminders",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/alphapay/auto-payouts",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

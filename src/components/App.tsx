@@ -149,7 +149,7 @@ export default function App() {
     if (memberships.error) throw memberships.error;
     const prof = (p.data ?? null) as Profile | null;
     if (!prof) throw new Error('No profile is associated with this account.');
-    setTeamMemberships(((memberships.data ?? []) as { agency_id: string; agency_name: string; role: 'admin' | 'member' }[])
+    setTeamMemberships(((memberships.data ?? []) as { agency_id: string; agency_name: string; role: 'manager' | 'reader' }[])
       .map((membership) => ({ id: membership.agency_id, name: membership.agency_name, role: membership.role })));
 
     const ratings: Data['ratings'] = {};
@@ -235,6 +235,52 @@ export default function App() {
   }, [user, load]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    let changeVersion = 0;
+    const channel = sb.channel(`campaign-budget-live:${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaigns' }, (payload) => {
+        if (!active) return;
+        changeVersion += 1;
+        if (payload.eventType === 'DELETE') {
+          const deletedId = Number((payload.old as { id?: number }).id);
+          setD((current) => ({ ...current, camps: current.camps.filter((campaign) => campaign.id !== deletedId) }));
+          return;
+        }
+
+        const campaign = payload.new as Campaign;
+        setD((current) => {
+          const camps = current.camps.filter((existing) => existing.id !== campaign.id);
+          camps.push(campaign);
+          camps.sort((a, b) => b.id - a.id);
+          return { ...current, camps };
+        });
+      })
+      .subscribe((status, error) => {
+        if (!active) return;
+        if (status === 'SUBSCRIBED') {
+          const subscribedVersion = changeVersion;
+          void sb.from('campaigns').select('*').order('id', { ascending: false }).then((result) => {
+            if (!active || result.error) {
+              if (active && result.error) console.error('Realtime campaign refresh failed', result.error);
+              return;
+            }
+            if (changeVersion === subscribedVersion) {
+              setD((current) => ({ ...current, camps: (result.data ?? []) as Campaign[] }));
+            }
+          });
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('Campaign budget realtime subscription failed', error ?? status);
+        }
+      });
+
+    return () => {
+      active = false;
+      void sb.removeChannel(channel);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
     if (!user || !profile || typeof window === 'undefined') return;
     const token = new URL(window.location.href).searchParams.get('team_invite');
     if (!token || processedTeamInvite.current === token) return;
@@ -279,7 +325,7 @@ export default function App() {
       const response = await fetch(`/api/alphapay/${endpoint}?id=${encodeURIComponent(id || '')}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const result = await response.json() as { status?: string; error?: string };
+      const result = await response.json() as { status?: string; purpose?: string; error?: string };
       if (!response.ok) throw new Error(result.error || 'Impossible de vérifier le paiement AlphaPay');
       await load(user);
       if (!active) return;
@@ -287,6 +333,13 @@ export default function App() {
         say(t(result.status === 'succeeded' ? 'saspay_topup_paid'
           : result.status === 'review' ? 'saspay_topup_review'
             : result.status === 'failed' ? 'saspay_topup_failed' : 'saspay_topup_pending'));
+        return;
+      }
+      if (result.purpose === 'budget_increase') {
+        say(t(result.status === 'succeeded' ? 'campaign_budget_increase_success'
+          : result.status === 'refunded' ? 'campaign_budget_increase_refunded'
+            : result.status === 'review' ? 'saspay_return_review'
+              : result.status === 'failed' ? 'saspay_return_failed' : 'saspay_return_pending'));
         return;
       }
       say(t(result.status === 'succeeded' ? 'saspay_return_paid'

@@ -1,7 +1,7 @@
 # StatutPay — Next.js 14 + Supabase (PWA)
 
 ## Installation
-Après `migration_v15.sql`, appliquez aussi les migrations `migration_v16.sql` à `migration_v28.sql` dans l’ordre numérique. Pour une base déjà à jour jusqu’à la v27, appliquez uniquement `migration_v28.sql`.
+Après `migration_v15.sql`, appliquez aussi les migrations `migration_v16.sql` à `migration_v33.sql` dans l’ordre numérique. Pour une base déjà à jour jusqu’à la v32, appliquez uniquement `migration_v33.sql`.
 
 1. `npm install`
 2. Copiez `.env.local.example` en `.env.local` et renseignez l’URL et la clé **anon** (Supabase > Project Settings > API).
@@ -143,11 +143,37 @@ Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, 
 - Exécutez `supabase/migration_v27.sql` après la migration v26. Elle ajoute le rôle agence, les fiches annonceurs et les invitations à accepter.
 - Une agence peut créer une campagne pour un annonceur géré ou ayant accepté son invitation. La campagne est créée sous le compte agence, payée séparément avec AlphaPay et ses budgets/dépenses sont ventilés par annonceur.
 
-## Version 28 : équipe agence
+## Version 28 : équipe agence (rôles initiaux)
 - Exécutez `supabase/migration_v28.sql` après la migration v27.
-- Le propriétaire et les admins peuvent inviter des membres par numéro (compte existant) ou par lien à usage unique, valable 7 jours. Les invitations par numéro doivent être acceptées dans l’application.
+- Le propriétaire et les admins initiaux peuvent inviter des membres par numéro (compte existant) ou par lien à usage unique, valable 7 jours. Les invitations par numéro doivent être acceptées dans l’application.
 - Le propriétaire attribue aux membres les annonceurs auxquels ils peuvent accéder. Les membres voient et créent des campagnes uniquement pour ces annonceurs; les campagnes restent la propriété de l’agence.
-- Un membre peut demander le paiement en créant une campagne. Seul le propriétaire de l’agence peut confirmer et payer la campagne avec AlphaPay. Les admins peuvent gérer les invitations et les rôles, mais ne peuvent pas attribuer les annonceurs.
+- Un membre peut demander le paiement en créant une campagne. Seul le propriétaire de l’agence peut confirmer et payer la campagne avec AlphaPay. Les rôles `admin`/`member` de la v28 sont convertis en `manager`/`reader` par la migration v29.
+
+## Version 29 : rôles d’équipe
+- Exécutez `supabase/migration_v29.sql` après la migration v28. Elle convertit les anciens rôles `admin`/`member` en `manager`/`reader`.
+- Le propriétaire conserve tous les droits et reste seul à attribuer les annonceurs et à confirmer/payer les campagnes.
+- Le gestionnaire peut administrer l’équipe et créer des campagnes pour les annonceurs attribués. Le lecteur peut consulter uniquement les annonceurs attribués, leurs campagnes et leurs rapports; il ne peut pas créer de campagne ni gérer l’équipe.
+
+## Version 30 : pause et reprise des campagnes
+- Exécutez `supabase/migration_v30.sql` après la migration v29.
+- Le propriétaire d’une campagne, l’administrateur et le gestionnaire autorisé peuvent mettre une campagne active en pause puis la reprendre. Une campagne en pause n’est plus proposée aux diffuseurs et n’accepte pas de nouvelles preuves.
+- La date de fin et la durée du boost sont décalées de la durée de pause. Les échéances H+1/H+23 des preuves déjà lancées ne changent pas.
+
+## Version 31 : augmentation du budget
+- Exécutez `supabase/migration_v31.sql` après la migration v30.
+- Le propriétaire d’une campagne individuelle peut augmenter son budget actif ou en pause avec le crédit disponible, le portefeuille lorsqu’il couvre le solde, puis AlphaPay pour le reste; aucun nouveau frais de création n’est ajouté.
+- Tous les rôles d’une agence, y compris les lecteurs, peuvent demander une augmentation pour un annonceur auquel ils ont accès. Le propriétaire de l’agence doit payer par AlphaPay; le budget n’augmente qu’après confirmation. Les demandes en attente peuvent être refusées par le propriétaire.
+- Une campagne terminée avant confirmation n’est pas augmentée; le paiement confirmé est alors remboursé dans le portefeuille.
+
+## Version 32 : progression du budget en temps réel
+- Exécutez `supabase/migration_v32.sql` après la migration v31 pour publier les changements de campagnes dans Supabase Realtime.
+- La dépense, le budget restant et le pourcentage consommé s’actualisent automatiquement dans l’espace annonceur et le tableau de bord.
+
+## Version 33 : retraits automatiques
+- Exécutez `supabase/migration_v33.sql` après la migration v32.
+- Chaque diffuseur peut activer ou désactiver les retraits automatiques, choisir le montant brut débité et enregistrer une destination Mobile Money dédiée. Le payout démarre dès que le solde disponible atteint ce montant; les frais existants sont déduits avant l’envoi du montant net.
+- Le traitement planifié s’exécute toutes les 5 minutes et utilise AlphaPay en production. Il requiert `CRON_SECRET`, `ALPHAPAY_PAYOUTS_ENABLED=true`, l’API de production et une IP serveur autorisée côté AlphaPay.
+- Un seul retrait en attente ou en cours est traité par compte à la fois. En cas d’échec définitif, l’automatisation est désactivée pour éviter des tentatives répétées; le diffuseur peut vérifier ses coordonnées puis la réactiver. Désactiver l’option ne peut pas annuler un payout déjà envoyé.
 
 ## Capture des preuves depuis l’application
 - Pour chaque preuve H+1/H+23, le diffuseur peut prendre une photo avec la caméra, choisir une image déjà enregistrée ou capturer un écran/fenêtre si le navigateur le permet.
