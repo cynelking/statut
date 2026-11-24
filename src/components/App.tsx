@@ -38,6 +38,7 @@ export default function App() {
   const [selectedAgencyWorkspaceId, setSelectedAgencyWorkspaceId] = useState<string | null>(null);
   const [agencyAdvertiserId, setAgencyAdvertiserId] = useState<number | null>(null);
   const [page, setPage] = useState<WorkspacePage>('dashboard');
+  const [agencyPageMode, setAgencyPageMode] = useState(false);
   const [sel, setSel] = useState<number | null>(null);
   const [recovery, setRecovery] = useState(false);
   const [profileLoadError, setProfileLoadError] = useState('');
@@ -86,11 +87,9 @@ export default function App() {
       return;
     }
     const storedWorkspace = localStorage.getItem(`agency-workspace:${user.id}`);
-    const nextWorkspaceId = agencyWorkspaces.some((workspace) => workspace.id === selectedAgencyWorkspaceId)
-      ? selectedAgencyWorkspaceId
-      : agencyWorkspaces.some((workspace) => workspace.id === storedWorkspace)
-        ? storedWorkspace
-        : agencyWorkspaces[0].id;
+    const nextWorkspaceId = agencyWorkspaces.find((workspace) => workspace.id === selectedAgencyWorkspaceId)?.id
+      ?? agencyWorkspaces.find((workspace) => workspace.id === storedWorkspace)?.id
+      ?? agencyWorkspaces[0].id;
     if (nextWorkspaceId !== selectedAgencyWorkspaceId) setSelectedAgencyWorkspaceId(nextWorkspaceId);
     localStorage.setItem(`agency-workspace:${user.id}`, nextWorkspaceId);
   }, [user?.id, agencyWorkspaces, selectedAgencyWorkspaceId]);
@@ -213,6 +212,7 @@ export default function App() {
       setTeamMemberships([]);
       setProfileLoadError('');
       setPage('dashboard');
+      setAgencyPageMode(false);
       processedTeamInvite.current = null;
       return;
     }
@@ -249,6 +249,7 @@ export default function App() {
         window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
         await load(user);
         selectAgencyWorkspace(agencyId);
+        setAgencyPageMode(true);
         setPage('agency');
         say(t('agency_team_joined'));
       } catch (reason) {
@@ -312,11 +313,21 @@ export default function App() {
 
   const admin = profile?.role === 'admin';
   const agency = profile?.role === 'agency';
+  const showAgencyWorkspace = agency || agencyPageMode;
   const tabs: Tab[] = admin ? ['d', 'a', 'm', 'p']
     : agency ? ['a', ...(teamMemberships.length ? ['g' as const] : []), 'p']
       : ['f', 'd', ...(teamMemberships.length ? ['g' as const] : []), 'a', 'p'];
   const navigate = (next: WorkspacePage) => {
-    if (next === 'advertiser' && agency && profile) selectAgencyWorkspace(profile.id);
+    if (next === 'agency') setAgencyPageMode(true);
+    else if (next === 'advertiser') {
+      setAgencyPageMode(false);
+      if (agency && profile) selectAgencyWorkspace(profile.id);
+    } else if (next === 'dashboard') {
+      setAgencyPageMode(false);
+      if (agency && profile) selectAgencyWorkspace(profile.id);
+    } else if (next !== 'campaigns' && next !== 'create') {
+      setAgencyPageMode(false);
+    }
     setPage(admin || next !== 'admin' ? next : 'dashboard');
   };
   const activeTab: Tab = page === 'feed' ? (admin ? 'd' : 'f')
@@ -351,7 +362,10 @@ export default function App() {
   else if (!profile) body = <p className="m">…</p>;
   else {
     const ctx: Ctx = {
-      user, profile, d, agencyWorkspaces, agencyWorkspaceId, agencyWorkspaceRole, selectAgencyWorkspace,
+      user, profile, d, agencyWorkspaces,
+      agencyWorkspaceId: showAgencyWorkspace ? agencyWorkspaceId : null,
+      agencyWorkspaceRole: showAgencyWorkspace ? agencyWorkspaceRole : null,
+      selectAgencyWorkspace,
       agencyAdvertiserId, selectAgencyAdvertiser, reload, say, run, sel, pick: setSel, go: navigateTab,
       goWallet: () => navigate('wallet'), goCampaigns: () => navigate('campaigns'), toggleFav,
     };

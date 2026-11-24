@@ -146,7 +146,7 @@ declare
   v_id bigint;
 begin
   if auth.uid() is null then raise exception 'Connexion requise'; end if;
-  if p_role not in ('admin', 'member') then raise exception 'Rôle d’équipe invalide'; end if;
+  if p_role is null or p_role not in ('admin', 'member') then raise exception 'Rôle d’équipe invalide'; end if;
   select * into v_agency from public.profiles where id = p_agency_id and role = 'agency';
   if not found or not public.can_manage_agency_team(p_agency_id) then
     raise exception 'Accès réservé au propriétaire ou à un admin de l’agence';
@@ -156,7 +156,7 @@ begin
   select * into v_member from public.profiles
   where phone = v_phone and role in ('user', 'agency');
   if not found then raise exception 'Aucun compte StatutPay admissible pour ce numéro'; end if;
-  if v_member.id = auth.uid() then raise exception 'Le propriétaire ne peut pas être invité comme membre'; end if;
+  if v_member.id = p_agency_id then raise exception 'Le propriétaire ne peut pas être invité comme membre'; end if;
   if exists (
     select 1 from public.agency_team_members
     where agency_id = p_agency_id and user_id = v_member.id
@@ -211,7 +211,7 @@ declare
   v_token uuid := gen_random_uuid();
 begin
   if auth.uid() is null then raise exception 'Connexion requise'; end if;
-  if p_role not in ('admin', 'member') then raise exception 'Rôle d’équipe invalide'; end if;
+  if p_role is null or p_role not in ('admin', 'member') then raise exception 'Rôle d’équipe invalide'; end if;
   select * into v_agency from public.profiles where id = p_agency_id and role = 'agency';
   if not found or not public.can_manage_agency_team(p_agency_id) then
     raise exception 'Accès réservé au propriétaire ou à un admin de l’agence';
@@ -349,7 +349,7 @@ declare
   v_agency_id uuid;
 begin
   if auth.uid() is null then raise exception 'Connexion requise'; end if;
-  if p_role not in ('admin', 'member') then raise exception 'Rôle d’équipe invalide'; end if;
+  if p_role is null or p_role not in ('admin', 'member') then raise exception 'Rôle d’équipe invalide'; end if;
   select agency_id into v_agency_id from public.agency_team_members
   where id = p_team_member_id and status in ('pending', 'accepted')
   for update;
@@ -378,10 +378,10 @@ begin
   if not exists (select 1 from public.profiles where id = auth.uid() and role = 'agency') then
     raise exception 'Seul le propriétaire de l’agence peut attribuer des annonceurs';
   end if;
-  if not exists (
-    select 1 from public.agency_team_members
-    where id = p_team_member_id and agency_id = auth.uid() and status = 'accepted'
-  ) then raise exception 'Membre introuvable ou invitation non acceptée'; end if;
+  perform id from public.agency_team_members
+  where id = p_team_member_id and agency_id = auth.uid() and status = 'accepted'
+  for update;
+  if not found then raise exception 'Membre introuvable ou invitation non acceptée'; end if;
   if exists (
     select requested.id
     from unnest(v_ids) as requested(id)

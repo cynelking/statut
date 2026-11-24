@@ -390,6 +390,8 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
                   {agencyClients.filter((client) => client.status === 'managed' || client.status === 'linked')
                     .map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}
                 </select>
+                {!agencyClientsLoading && agencyClients.length === 0
+                  && <p className="m">{t(isTeamMember ? 'agency_team_no_clients' : 'agency_client_empty')}</p>}
               </div>
             )}
           </div>
@@ -522,7 +524,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
             </select>
             <p className="note">{t(isTeamMember ? 'agency_member_campaign_payment' : 'agency_campaign_payment')}</p>
             {!agencyClientsLoading && !agencyClients.some((client) => client.status === 'managed' || client.status === 'linked')
-              && <p className="err" role="alert">{t('agency_select_client_error')}</p>}
+              && <p className="err" role="alert">{t(isTeamMember ? 'agency_team_no_clients' : 'agency_select_client_error')}</p>}
             {agencyError && <p className="err" role="alert">{agencyError}</p>}
           </>
         )}

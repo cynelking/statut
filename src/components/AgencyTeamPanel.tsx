@@ -42,6 +42,10 @@ export default function AgencyTeamPanel({ c, clients }: { c: Ctx; clients: Clien
   const isOwner = c.agencyWorkspaceRole === 'owner';
   const workspaceId = c.agencyWorkspaceId;
 
+  useEffect(() => {
+    setShareUrl('');
+  }, [workspaceId]);
+
   const loadTeam = useCallback(async () => {
     if (!workspaceId) return;
     const membersResult = await sb.from('agency_team_members')
