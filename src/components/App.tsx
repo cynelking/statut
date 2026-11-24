@@ -23,7 +23,6 @@ import ScrollEffects from './ScrollEffects';
 import LandingView from './LandingView';
 import TransactionHistory from './TransactionHistory';
 import PushToggle from './PushToggle';
-import SupportTickets from './SupportTickets';
 import { FAQ } from '@/lib/faq';
 import { ADMIN } from '@/lib/types';
 
@@ -450,7 +449,6 @@ export default function App() {
                               <details className="faq" key={item.q}><summary>{item.q}</summary><p>{item.a}</p></details>
                             ))}
                           </section>
-                          <SupportTickets c={ctx} />
                         </section>
                         : page === 'admin' && admin ? <AdminView c={ctx} /> : <PublisherView c={ctx} view="dashboard" />}
       </>

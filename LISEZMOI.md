@@ -1,7 +1,7 @@
 # StatutPay — Next.js 14 + Supabase (PWA)
 
 ## Installation
-Après `migration_v15.sql`, appliquez aussi les migrations `migration_v16.sql` à `migration_v34.sql` dans l’ordre numérique. Pour une base à jour jusqu’à la v32, appliquez v33 puis v34; pour une base à jour jusqu’à v33, appliquez uniquement v34.
+Après `migration_v15.sql`, appliquez aussi les migrations `migration_v16.sql` à `migration_v33.sql` dans l’ordre numérique. Pour une base déjà à jour jusqu’à la v32, appliquez uniquement `migration_v33.sql`.
 
 1. `npm install`
 2. Copiez `.env.local.example` en `.env.local` et renseignez l’URL et la clé **anon** (Supabase > Project Settings > API).
@@ -28,13 +28,13 @@ Dans Admin > Utilisateurs, l’export CSV télécharge les contacts actuellement
 
 ## Mise en ligne (Vercel)
 1. Vérifiez localement `npm ci` puis `npm run build`. Le dépôt contient `package-lock.json`; ne publiez jamais `.env.local` (il est ignoré par Git).
-2. Poussez les changements sur GitHub, puis importez le dépôt dans Vercel. Vercel doit détecter **Next.js** automatiquement; gardez la racine du projet et les paramètres de build par défaut (la commande de build est `npm run build`). `vercel.json` configure les rappels planifiés; aucune commande de démarrage personnalisée n’est nécessaire.
+2. Poussez les changements sur GitHub, puis importez le dépôt dans Vercel. Vercel doit détecter **Next.js** automatiquement; gardez la racine du projet et les paramètres de build par défaut (la commande de build est `npm run build`). Aucun démarrage personnalisé n’est nécessaire.
 3. Dans **Project Settings > Environment Variables**, ajoutez les variables nécessaires dans les environnements Preview et/ou Production :
    - `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY` : valeurs Supabase du projet.
    - `SUPABASE_SERVICE_ROLE_KEY` : clé secrète Supabase, uniquement côté serveur.
    - `APP_BASE_URL` : URL HTTPS publique de l’environnement déployé, sans slash final.
    - `ALPHAPAY_API_BASE_URL`, `ALPHAPAY_API_KEY` et `ALPHAPAY_WEBHOOK_SECRET` : paramètres AlphaPay du même environnement. La clé doit avoir les scopes `PAYIN` et `PAYOUT` (ou `BOTH`).
-   - Pour les notifications push, ajoutez aussi `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` et `VAPID_SUBJECT`. La clé privée VAPID reste secrète. Les rappels de preuve et retraits automatiques ne sont plus planifiés par Vercel; pour les utiliser, configurez un planificateur externe et ajoutez `CRON_SECRET`.
+   - Pour les notifications push, ajoutez aussi `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` et `VAPID_SUBJECT`. La clé privée VAPID reste secrète. `CRON_SECRET` n’est nécessaire que si vous configurez un planificateur externe pour appeler une route protégée.
 4. Pour tester les paiements, utilisez `ALPHAPAY_API_BASE_URL=https://sandbox-api.alphapay.me/api/v1` et une clé sandbox. Gardez `ALPHAPAY_PAYOUTS_ENABLED=false` : AlphaPay ne permet pas de tester les payouts en sandbox. Configurez le webhook sandbox vers `https://statutpay.vercel.app/webhooks/alphapay` avec les événements `transaction.success` et `transaction.failed`, puis placez son secret de signature dans `ALPHAPAY_WEBHOOK_SECRET`.
 5. Dans Supabase > Authentication > URL Configuration, configurez l’URL du site et les URL de redirection Vercel (production et preview si nécessaire). Appliquez toutes les migrations, y compris `migration_v15.sql`, avant de tester les paiements AlphaPay.
 6. Vérifiez le déploiement Preview et le parcours de paiement sandbox avant de déployer en production. Pour les paiements réels, configurez la clé et l’URL de production. Les payouts restent désactivés jusqu’à l’activation de la fonctionnalité sur votre compte AlphaPay et l’autorisation de l’IP sortante fixe de Vercel dans AlphaPay. Ne configurez `ALPHAPAY_PAYOUTS_ENABLED=true` qu’après ces vérifications.
@@ -63,7 +63,7 @@ Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, 
   2. Dans `.env.local` (et dans Vercel) : `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `SUPABASE_SERVICE_ROLE_KEY`
   3. `SUPABASE_SERVICE_ROLE_KEY` est **secrète** (Supabase > Settings > API > service_role) : ne jamais la mettre dans le navigateur ni sur GitHub.
   4. Fonctionne en production HTTPS uniquement. Sur iPhone, l’app doit d’abord être installée sur l’écran d’accueil (iOS 16.4+).
-  5. Les rappels de preuve requièrent aussi `supabase/migration_v26.sql`. La tâche Cron Vercel a été supprimée. Pour envoyer les rappels automatiquement, configurez un planificateur externe qui appelle `/api/proof-reminders` avec `Authorization: Bearer <CRON_SECRET>`. Sans planificateur, aucun rappel ne sera envoyé.
+  5. Les rappels de preuve requièrent aussi `supabase/migration_v26.sql`. Aucun cron Vercel n’est configuré; pour envoyer les rappels automatiquement, configurez un planificateur externe avec l’en-tête `Authorization: Bearer <CRON_SECRET>`.
 - **Feed** : filtres Mon pays / Tous / Favoris et par format, cœur pour les favoris, ciblage par pays choisi par l’annonceur (un diffuseur ne peut soumettre que les annonces de son pays ou sans ciblage).
 - **Contenu des annonces** : les diffuseurs peuvent télécharger les médias, copier le texte et la légende, télécharger le texte en `.txt` et partager via le menu natif ou WhatsApp.
 - **Classement** : top 10 des diffuseurs du mois (numéros masqués) dans l’onglet Diffuseur.
@@ -137,7 +137,7 @@ Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, 
 ## Version 26 : rappels push des échéances de preuve
 - Exécutez `supabase/migration_v26.sql` après les migrations précédentes. Elle relie les abonnements push au compte et planifie les rappels pour les preuves en cours.
 - Si les notifications push sont activées, un rappel est envoyé environ 15 minutes avant la fin de chaque fenêtre : H+22 h 45 pour la capture H+1 et H+23 h 45 pour la capture H+23. Un rappel déjà rendu inutile par l’envoi de la capture est annulé.
-- La tâche Cron Vercel a été supprimée. Pour envoyer les rappels automatiquement, configurez un planificateur externe qui appelle `/api/proof-reminders` avec `Authorization: Bearer <CRON_SECRET>`. Sans planificateur, aucun rappel ne sera envoyé. Les clés VAPID et `SUPABASE_SERVICE_ROLE_KEY` doivent également être présentes.
+- Aucun cron n’est configuré dans `vercel.json`. Les rappels automatiques ne sont donc pas envoyés, sauf si un planificateur externe appelle `/api/proof-reminders` avec `Authorization: Bearer <CRON_SECRET>`. Cette route requiert aussi les clés VAPID et `SUPABASE_SERVICE_ROLE_KEY`.
 
 ## Version 27 : comptes agence
 - Exécutez `supabase/migration_v27.sql` après la migration v26. Elle ajoute le rôle agence, les fiches annonceurs et les invitations à accepter.
@@ -172,13 +172,8 @@ Le flux « Annonces » liste les campagnes actives (filtres image/vidéo/texte, 
 ## Version 33 : retraits automatiques
 - Exécutez `supabase/migration_v33.sql` après la migration v32.
 - Chaque diffuseur peut activer ou désactiver les retraits automatiques, choisir le montant brut débité et enregistrer une destination Mobile Money dédiée. Le payout démarre dès que le solde disponible atteint ce montant; les frais existants sont déduits avant l’envoi du montant net.
-- La tâche Cron Vercel a été supprimée. Pour déclencher les retraits automatiquement, configurez un planificateur externe qui appelle `/api/alphapay/auto-payouts` avec `Authorization: Bearer <CRON_SECRET>`. Le traitement utilise AlphaPay en production et requiert aussi `ALPHAPAY_PAYOUTS_ENABLED=true`, l’API de production et une IP serveur autorisée côté AlphaPay.
+- Aucun cron n’est configuré pour les retraits automatiques. Ils ne sont pas déclenchés automatiquement, sauf si un planificateur externe appelle `/api/alphapay/auto-payouts` avec `CRON_SECRET`. Les payouts requièrent aussi `ALPHAPAY_PAYOUTS_ENABLED=true`, l’API de production et une IP serveur autorisée côté AlphaPay.
 - Un seul retrait en attente ou en cours est traité par compte à la fois. En cas d’échec définitif, l’automatisation est désactivée pour éviter des tentatives répétées; le diffuseur peut vérifier ses coordonnées puis la réactiver. Désactiver l’option ne peut pas annuler un payout déjà envoyé.
-
-## Version 34 : tickets de support
-- Exécutez `supabase/migration_v34.sql` après la migration v33.
-- Les utilisateurs peuvent ouvrir des tickets et répondre depuis Aide > Tickets de support. L’équipe admin peut répondre, rouvrir ou fermer les tickets depuis Admin > Support.
-- Les conversations sont privées : l’utilisateur voit uniquement ses propres tickets et les admins voient la file complète. Les messages ne sont pas envoyés par e-mail ou notification; les réponses se consultent dans l’application.
 
 ## Capture des preuves depuis l’application
 - Pour chaque preuve H+1/H+23, le diffuseur peut prendre une photo avec la caméra, choisir une image déjà enregistrée ou capturer un écran/fenêtre si le navigateur le permet.

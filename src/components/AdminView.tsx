@@ -8,7 +8,6 @@ import AdminPromos from './AdminPromos';
 import AdminAnnouncements from './AdminAnnouncements';
 import AdminUsers from './AdminUsers';
 import AdminActivity from './AdminActivity';
-import SupportTickets from './SupportTickets';
 
 interface Stats {
   users: number; users7: number; ca: number; cp: number; cd: number; fees: number; views: number;
@@ -18,7 +17,7 @@ interface Stats {
 
 export default function AdminView({ c }: { c: Ctx }) {
   const { t, f } = useI18n();
-  const [view, setView] = useState<'dash' | 'manage' | 'users' | 'activity' | 'support'>('dash');
+  const [view, setView] = useState<'dash' | 'manage' | 'users' | 'activity'>('dash');
   const [st, setSt] = useState<Stats | null>(null);
   const [statsError, setStatsError] = useState('');
   const [views, setViews] = useState<Record<number, string>>({});
@@ -137,7 +136,6 @@ export default function AdminView({ c }: { c: Ctx }) {
         </button>
         <button className={'s' + (view === 'users' ? ' on' : '')} role="tab" aria-selected={view === 'users'} onClick={() => setView('users')}>{t('k_users')}</button>
         <button className={'s' + (view === 'activity' ? ' on' : '')} role="tab" aria-selected={view === 'activity'} onClick={() => setView('activity')}>{t('admin_activity')}</button>
-        <button className={'s' + (view === 'support' ? ' on' : '')} role="tab" aria-selected={view === 'support'} onClick={() => setView('support')}>{t('support_admin_tab')}</button>
       </div>
 
       {view === 'dash' && (
@@ -261,7 +259,6 @@ export default function AdminView({ c }: { c: Ctx }) {
       )}
       {view === 'users' && <AdminUsers />}
       {view === 'activity' && <AdminActivity />}
-      {view === 'support' && <SupportTickets c={c} adminMode />}
     </>
   );
 }
