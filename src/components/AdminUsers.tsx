@@ -7,7 +7,7 @@ interface AdminUser {
   id: string;
   phone: string;
   country: string | null;
-  role: 'user' | 'admin';
+  role: 'user' | 'agency' | 'admin';
   credit: number;
   created_at: string | null;
 }
@@ -167,7 +167,7 @@ export default function AdminUsers() {
             </span>
           </div>
           <div className="actions">
-            <span className="tag">{user.role === 'admin' ? t('r_m') : t('r_d')}</span>
+            <span className="tag">{user.role === 'admin' ? t('r_m') : user.role === 'agency' ? t('agency_account') : t('r_d')}</span>
             <span className="tag">{t('credit')} · {f(Number(user.credit ?? 0))}</span>
           </div>
         </div>

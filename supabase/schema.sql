@@ -2,7 +2,7 @@
 create table public.profiles(
   id uuid primary key references auth.users on delete cascade,
   phone text unique not null, country text,
-  role text not null default 'user' check (role in ('user','admin')),
+  role text not null default 'user' check (role in ('user','agency','admin')),
   created_at timestamptz default now());
 create table public.campaigns(
   id bigint generated always as identity primary key,

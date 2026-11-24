@@ -17,6 +17,10 @@ interface Announcement {
 
 const URL_RE = /^https?:\/\/\S+$/i;
 const imageLoader = ({ src }: { src: string }) => src;
+const SHARE_MIME_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+};
 
 function ago(iso: string | undefined, lang: string): string {
   if (!iso) return '';
@@ -37,6 +41,8 @@ export default function FeedView({ c }: { c: Ctx }) {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
   const [announcementsError, setAnnouncementsError] = useState(false);
+  const [preparedShare, setPreparedShare] = useState<{ campaignId: number; file: File } | null>(null);
+  const [preparingShareId, setPreparingShareId] = useState<number | null>(null);
   const favs = new Set(c.d.favs);
   const submitted = new Set(c.d.proofs.map((p) => p.campaign_id));
   const eligible = (x: Campaign) => !x.country || x.country === c.profile.country;
@@ -143,26 +149,87 @@ export default function FeedView({ c }: { c: Ctx }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function shareCampaign(x: Campaign) {
-    const text = [x.title, x.content].filter(Boolean).join('\n\n');
-    const url = x.media_url ?? undefined;
-    if (navigator.share) {
-      c.run(async () => {
-        try {
-          await navigator.share({ title: x.title, text, url });
-        } catch (reason) {
-          if (reason instanceof DOMException && reason.name === 'AbortError') return;
-          throw new Error(t('share_error'));
-        }
-      });
+  function sendToNativeShare(data: ShareData) {
+    if (!navigator.share) {
+      c.say(t('share_native_unsupported'));
       return;
     }
-    const waUrl = `https://wa.me/?text=${encodeURIComponent([text, url].filter(Boolean).join('\n\n'))}`;
-    const link = document.createElement('a');
-    link.href = waUrl;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.click();
+
+    let sharing: Promise<void>;
+    try {
+      sharing = navigator.share(data);
+    } catch (reason) {
+      if (reason instanceof DOMException && reason.name === 'AbortError') return;
+      c.say(t('share_error'));
+      return;
+    }
+
+    c.run(async () => {
+      try {
+        await sharing;
+      } catch (reason) {
+        if (reason instanceof DOMException && reason.name === 'AbortError') return;
+        throw new Error(t('share_error'));
+      }
+    });
+  }
+
+  function prepareMediaForShare(x: Campaign) {
+    const mediaUrl = x.media_url;
+    if (!mediaUrl) return;
+    if (!navigator.share || typeof navigator.canShare !== 'function') {
+      c.say(t('share_media_unsupported'));
+      return;
+    }
+    if (preparingShareId === x.id) return;
+
+    c.run(async () => {
+      setPreparingShareId(x.id);
+      try {
+        let response: Response;
+        try {
+          response = await fetch(mediaUrl);
+        } catch {
+          throw new Error(t('share_media_fetch_error'));
+        }
+        if (!response.ok) throw new Error(t('share_media_fetch_error'));
+        const maxSize = x.type === 'img' ? 5 * 1024 * 1024 : 20 * 1024 * 1024;
+        const contentLength = response.headers.get('content-length');
+        if (contentLength && Number(contentLength) > maxSize) throw new Error(t('share_media_too_large'));
+        const blob = await response.blob();
+        if (blob.size > maxSize) throw new Error(t('share_media_too_large'));
+        const extension = mediaFileName(x).split('.').pop()?.toLowerCase() ?? '';
+        const expectedType = x.type === 'img' ? 'image/' : 'video/';
+        const type = blob.type.startsWith(expectedType)
+          ? blob.type
+          : SHARE_MIME_TYPES[extension] ?? (x.type === 'img' ? 'image/jpeg' : 'video/mp4');
+        const file = new File([blob], mediaFileName(x), { type });
+        if (!navigator.canShare({ files: [file] })) throw new Error(t('share_media_unsupported'));
+        setPreparedShare({ campaignId: x.id, file });
+        c.say(t('share_media_ready'));
+      } finally {
+        setPreparingShareId(null);
+      }
+    });
+  }
+
+  function shareCampaign(x: Campaign) {
+    const text = [x.title, x.content].filter(Boolean).join('\n\n');
+    if (!x.media_url || x.type === 'txt') {
+      sendToNativeShare({ title: x.title, text });
+      return;
+    }
+
+    if (preparedShare?.campaignId !== x.id) {
+      prepareMediaForShare(x);
+      return;
+    }
+    if (!navigator.canShare?.({ files: [preparedShare.file] })) {
+      setPreparedShare(null);
+      c.say(t('share_media_unsupported'));
+      return;
+    }
+    sendToNativeShare({ title: x.title, text, files: [preparedShare.file] });
   }
 
   return (
@@ -276,8 +343,21 @@ export default function FeedView({ c }: { c: Ctx }) {
             {x.media_url && x.type === 'vid' && (
               <video className="ad-media" src={x.media_url} controls playsInline preload="metadata" />
             )}
+            <section className="campaign-terms" aria-label={t('proof_conditions_title')}>
+              <div className="campaign-estimate">
+                <span>{t('proof_estimate_label')}</span>
+                <strong>{f(VIEW_RATE)} / {t('proof_approved_view')}</strong>
+              </div>
+              <ul>
+                <li>{t('proof_condition_status')}</li>
+                <li>{t('proof_condition_captures')}</li>
+                <li>{t('proof_condition_payment')}</li>
+              </ul>
+              <p>{t('proof_estimate_note')}</p>
+            </section>
             <div className="bar"><i style={{ width: Math.round((x.spent / x.budget) * 100) + '%' }} /></div>
             <div className="m">{t('rest')} {f(left)} · {possibleViews.toLocaleString()} {t('views_max')}</div>
+            <p className="campaign-capacity-note">{t('proof_capacity_note')}</p>
             <div className="actions">
               <span className="actions">
                 <span className="tag ok">{t('earn')}</span>
@@ -291,7 +371,13 @@ export default function FeedView({ c }: { c: Ctx }) {
                 {(x.type === 'txt' || x.content) && (
                   <button className="s" type="button" onClick={() => downloadText(x)}><Icon n="dl" />{t('download_text')}</button>
                 )}
-                <button className="s" type="button" onClick={() => shareCampaign(x)}><Icon n="share" />{t('share_campaign')}</button>
+                <button className={'s' + (preparedShare?.campaignId === x.id ? ' on' : '')} type="button"
+                  disabled={preparingShareId === x.id}
+                  onClick={() => shareCampaign(x)}>
+                  <Icon n="share" />
+                  {preparingShareId === x.id ? t('share_preparing')
+                    : preparedShare?.campaignId === x.id ? t('share_ready') : t('share_campaign')}
+                </button>
                 <button className="p" disabled={submitted.has(x.id) || !ok} onClick={() => { c.pick(x.id); c.go('d'); }}>
                   {submitted.has(x.id) ? t('posted') : ok ? t('post') : t('other_c')}
                 </button>

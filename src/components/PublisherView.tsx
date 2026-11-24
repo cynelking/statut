@@ -11,10 +11,20 @@ import { isNet, queueProof } from '@/lib/offline';
 import { COUNTRY_CODES, type AlphaPayCountry, type AlphaPayNetwork } from '@/lib/alphapay';
 import TransactionHistory from './TransactionHistory';
 
+type ProofTransfer = {
+  proofId: number;
+  stage: 'h1' | 'h23';
+  state: 'validating' | 'uploading' | 'submitting' | 'queued' | 'complete' | 'error';
+  error?: string;
+};
+
 export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?: 'dashboard' | 'wallet' }) {
   const { t, f } = useI18n();
   const [file, setFile] = useState<File | null>(null);
   const [fileTarget, setFileTarget] = useState<{ proofId: number; stage: 'h1' | 'h23'; createdAt: number } | null>(null);
+  const [proofTransfer, setProofTransfer] = useState<ProofTransfer | null>(null);
+  const [screenCaptureAvailable, setScreenCaptureAvailable] = useState(false);
+  const [screenCapturing, setScreenCapturing] = useState(false);
   const [clock, setClock] = useState(Date.now());
   const [payCountries, setPayCountries] = useState<AlphaPayCountry[]>([]);
   const [payNetworks, setPayNetworks] = useState<AlphaPayNetwork[]>([]);
@@ -41,10 +51,17 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
   );
   const withdrawalFeeAmount = withdrawalFee(c.d.bal);
   const payoutAmount = Math.max(0, c.d.bal - withdrawalFeeAmount);
+  const proofUploadInProgress = proofTransfer !== null
+    && (proofTransfer.state === 'validating' || proofTransfer.state === 'uploading' || proofTransfer.state === 'submitting');
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 30_000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setScreenCaptureAvailable(typeof navigator !== 'undefined'
+      && typeof navigator.mediaDevices?.getDisplayMedia === 'function');
   }, []);
 
   useEffect(() => {
@@ -89,35 +106,98 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
   }
   function sendProof(proof: Proof, stage: 'h1' | 'h23') {
     c.run(async () => {
-      if (!file || !fileTarget || fileTarget.proofId !== proof.id || fileTarget.stage !== stage
-        || !file.type.startsWith('image/') || file.size > 5 * 1048576) throw new Error(t('nofile'));
-      const submittedFile = file;
-      const createdAt = fileTarget.createdAt;
-      const queue = async () => {
-        await queueProof({
-          userId: c.user.id, campaignId: proof.campaign_id, proofId: proof.id, stage,
-          name: submittedFile.name, type: submittedFile.type, blob: submittedFile, createdAt,
+      setProofTransfer({ proofId: proof.id, stage, state: 'validating' });
+      try {
+        if (!file || !fileTarget || fileTarget.proofId !== proof.id || fileTarget.stage !== stage
+          || !file.type.startsWith('image/') || file.size > 5 * 1048576) throw new Error(t('nofile'));
+        const submittedFile = file;
+        const createdAt = fileTarget.createdAt;
+        const queue = async () => {
+          await queueProof({
+            userId: c.user.id, campaignId: proof.campaign_id, proofId: proof.id, stage,
+            name: submittedFile.name, type: submittedFile.type, blob: submittedFile, createdAt,
+          });
+          setFile(null);
+          setFileTarget(null);
+          setProofTransfer({ proofId: proof.id, stage, state: 'queued' });
+          c.say(t('q_saved'));
+        };
+        if (!navigator.onLine) return await queue();
+        const ext = (submittedFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const path = `${c.user.id}/${proof.id}-${stage}-${createdAt}.${ext}`;
+        setProofTransfer({ proofId: proof.id, stage, state: 'uploading' });
+        const up = await sb.storage.from('proofs').upload(path, submittedFile, { contentType: submittedFile.type });
+        if (up.error) {
+          if (isNet(up.error)) return await queue();
+          if (!/exists|duplicate/i.test(up.error.message)) throw up.error;
+        }
+        setProofTransfer({ proofId: proof.id, stage, state: 'submitting' });
+        const submitted = await sb.rpc('submit_proof_stage', {
+          p_proof_id: proof.id, p_stage: stage, p_image_path: path,
         });
-        setFile(null);
-        setFileTarget(null);
-        c.say(t('q_saved'));
-      };
-      if (!navigator.onLine) return queue();
-      const ext = (submittedFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const path = `${c.user.id}/${proof.id}-${stage}-${createdAt}.${ext}`;
-      const up = await sb.storage.from('proofs').upload(path, submittedFile, { contentType: submittedFile.type });
-      if (up.error) {
-        if (isNet(up.error)) return queue();
-        if (!/exists|duplicate/i.test(up.error.message)) throw up.error;
+        if (submitted.error) { if (isNet(submitted.error)) return await queue(); throw submitted.error; }
+      } catch (reason) {
+        setProofTransfer({
+          proofId: proof.id, stage, state: 'error',
+          error: reason instanceof Error ? reason.message : String(reason),
+        });
+        throw reason;
       }
-      const submitted = await sb.rpc('submit_proof_stage', {
-        p_proof_id: proof.id, p_stage: stage, p_image_path: path,
-      });
-      if (submitted.error) { if (isNet(submitted.error)) return queue(); throw submitted.error; }
+
       setFile(null);
       setFileTarget(null);
+      setProofTransfer({ proofId: proof.id, stage, state: 'complete' });
       await c.reload();
       c.say(t(stage === 'h1' ? 'proof_h1_sent' : 'proof_h23_sent'));
+    });
+  }
+  function captureProofScreen(proofId: number, stage: 'h1' | 'h23') {
+    c.run(async () => {
+      const mediaDevices = navigator.mediaDevices;
+      if (typeof mediaDevices?.getDisplayMedia !== 'function') throw new Error(t('proof_screen_unsupported'));
+      setScreenCapturing(true);
+      let stream: MediaStream | null = null;
+      try {
+        stream = await mediaDevices.getDisplayMedia({ video: true, audio: false });
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.srcObject = stream;
+        await video.play();
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+          await new Promise<void>((resolve, reject) => {
+            video.addEventListener('loadeddata', () => resolve(), { once: true });
+            video.addEventListener('error', () => reject(new Error(t('proof_capture_failed'))), { once: true });
+          });
+        }
+        if (!video.videoWidth || !video.videoHeight) throw new Error(t('proof_capture_failed'));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error(t('proof_capture_failed'));
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        let image: Blob | null = null;
+        for (const quality of [0.9, 0.8, 0.7, 0.6]) {
+          image = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+          if (!image || image.size <= 5 * 1024 * 1024) break;
+        }
+        if (!image) throw new Error(t('proof_capture_failed'));
+        if (image.size > 5 * 1024 * 1024) throw new Error(t('proof_capture_too_large'));
+
+        const createdAt = Date.now();
+        setFile(new File([image], `proof-${stage}-${createdAt}.jpg`, { type: 'image/jpeg' }));
+        setFileTarget({ proofId, stage, createdAt });
+        setProofTransfer((current) => current?.proofId === proofId && current.stage === stage ? null : current);
+      } catch (reason) {
+        if (reason instanceof DOMException && ['AbortError', 'NotAllowedError'].includes(reason.name)) return;
+        throw reason;
+      } finally {
+        stream?.getTracks().forEach((track) => track.stop());
+        setScreenCapturing(false);
+      }
     });
   }
   function withdraw() {
@@ -220,6 +300,7 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
           <span><b>{completedCount}</b> validations</span>
         </div>
         <button className="dashboard-primary" type="button" onClick={() => c.go('f')}>＋ Voir les campagnes</button>
+        <button className="dashboard-primary" type="button" onClick={c.goWallet}>{t('wd')}</button>
       </section>
 
       <div className="dashboard-columns dashboard-only">
@@ -306,9 +387,27 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
                   const elapsed = clock >= deadline;
                   const available = clock >= availableAt && !elapsed;
                   const stageExpired = elapsed || (requiresFirst && !p.image_path && clock >= h23At);
+                  const state = imagePath ? 'done' : stageExpired ? 'expired' : available ? 'ready' : 'waiting';
+                  const activeTransfer = proofTransfer?.proofId === p.id && proofTransfer.stage === key ? proofTransfer : null;
                   return (
-                    <div className="proof-stage" key={key}>
-                      <b>{label}</b>
+                    <div className={`proof-stage is-${state}`} key={key}>
+                      <div className="proof-stage-heading">
+                        <span className="proof-stage-number">{key === 'h1' ? '1' : '2'}</span>
+                        <div>
+                          <b>{label}</b>
+                          <small>{t(key === 'h1' ? 'proof_h1_period' : 'proof_h23_period')}</small>
+                        </div>
+                      </div>
+                      {activeTransfer && <div className={`proof-upload-status is-${activeTransfer.state}`}
+                        role={activeTransfer.state === 'error' ? 'alert' : 'status'}
+                        aria-live={activeTransfer.state === 'error' ? 'assertive' : 'polite'}
+                        aria-busy={activeTransfer.state === 'validating' || activeTransfer.state === 'uploading' || activeTransfer.state === 'submitting'}>
+                        <span>{activeTransfer.state === 'error'
+                          ? `${t('proof_upload_error')} ${activeTransfer.error || ''}`
+                          : t(`proof_upload_${activeTransfer.state}`)}</span>
+                        {(activeTransfer.state === 'validating' || activeTransfer.state === 'uploading' || activeTransfer.state === 'submitting')
+                          && <i className="proof-upload-indicator" aria-hidden="true" />}
+                      </div>}
                       {imagePath
                         ? <span className="tag ok">{t('proof_uploaded')}</span>
                         : stageExpired
@@ -318,21 +417,53 @@ export default function PublisherView({ c, view = 'dashboard' }: { c: Ctx; view?
                             : requiresFirst && !p.image_path
                               ? <small className="m">{t('proof_h1_required')}</small>
                               : <>
-                                <label htmlFor={`proof-${key}-${p.id}`}>{t('file')}</label>
-                                <input id={`proof-${key}-${p.id}`} type="file" accept="image/*" onChange={(event) => {
-                                  setFile(event.target.files?.[0] ?? null);
-                                  setFileTarget({ proofId: p.id, stage: key, createdAt: Date.now() });
-                                }} />
+                                <div className="proof-capture-actions">
+                                  <input id={`proof-camera-${key}-${p.id}`} className="proof-file-input" type="file" accept="image/*" capture="environment"
+                                    aria-label={t('proof_take_photo')} onChange={(event) => {
+                                      const selected = event.target.files?.[0] ?? null;
+                                      setFile(selected);
+                                      setFileTarget(selected ? { proofId: p.id, stage: key, createdAt: Date.now() } : null);
+                                      setProofTransfer((current) => current?.proofId === p.id && current.stage === key ? null : current);
+                                      event.target.value = '';
+                                    }} />
+                                  <button className="s" type="button" aria-controls={`proof-camera-${key}-${p.id}`}
+                                    disabled={proofUploadInProgress}
+                                    onClick={() => document.getElementById(`proof-camera-${key}-${p.id}`)?.click()}>{t('proof_take_photo')}</button>
+                                  <input id={`proof-image-${key}-${p.id}`} className="proof-file-input" type="file" accept="image/*"
+                                    aria-label={t('proof_choose_image')} onChange={(event) => {
+                                      const selected = event.target.files?.[0] ?? null;
+                                      setFile(selected);
+                                      setFileTarget(selected ? { proofId: p.id, stage: key, createdAt: Date.now() } : null);
+                                      setProofTransfer((current) => current?.proofId === p.id && current.stage === key ? null : current);
+                                      event.target.value = '';
+                                    }} />
+                                  <button className="s" type="button" aria-controls={`proof-image-${key}-${p.id}`}
+                                    disabled={proofUploadInProgress}
+                                    onClick={() => document.getElementById(`proof-image-${key}-${p.id}`)?.click()}>{t('proof_choose_image')}</button>
+                                  {screenCaptureAvailable && <button className="s" type="button" disabled={screenCapturing || proofUploadInProgress}
+                                    onClick={() => captureProofScreen(p.id, key)}>
+                                    {screenCapturing ? t('proof_capture_busy') : t('proof_capture_screen')}
+                                  </button>}
+                                </div>
+                                <small className="m">{screenCaptureAvailable ? t('proof_screen_hint') : t('proof_camera_hint')}</small>
+                                {file && fileTarget?.proofId === p.id && fileTarget.stage === key
+                                  && <small className="m">{t('proof_file_selected')} {file.name}</small>}
                                 <button className="s" type="button"
-                                  disabled={!file || fileTarget?.proofId !== p.id || fileTarget?.stage !== key}
-                                  onClick={() => sendProof(p, key)}>{t('send')}</button>
+                                  disabled={!file || fileTarget?.proofId !== p.id || fileTarget?.stage !== key || proofUploadInProgress}
+                                  onClick={() => sendProof(p, key)}>
+                                  {activeTransfer?.state === 'error' ? t('proof_retry_send') : t('send')}
+                                </button>
                               </>
                       }
                     </div>
                   );
                 };
                 return (
-                  <div className="proof-timeline">
+                  <div className="proof-timeline" aria-label={t('proof_timeline_title')}>
+                    <div className="proof-timeline-intro">
+                      <b>{t('proof_timeline_title')}</b>
+                      <p>{t('proof_timeline_note')}</p>
+                    </div>
                     {stage('h1', t('proof_h1_title'), p.image_path, h1At, h23At, false)}
                     {stage('h23', t('proof_h23_title'), p.final_image_path ?? null, h23At, expiresAt, true)}
                     {p.final_image_path && <small className="m">{t('proof_waiting_review')}</small>}

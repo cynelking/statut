@@ -8,15 +8,20 @@ import { Icon } from './ui';
 export default function PushToggle({ c }: { c: Ctx }) {
   const { t } = useI18n();
   const [st, setSt] = useState<PushState>('unsupported');
-  useEffect(() => { pushState().then(setSt).catch(() => {}); }, []);
+  useEffect(() => {
+    pushState(c.user.id, c.profile.country).then(setSt).catch((reason: unknown) => {
+      setSt('off');
+      c.say(reason instanceof Error ? reason.message : String(reason));
+    });
+  }, [c.profile.country, c.say, c.user.id]);
   if (st === 'unsupported') return null;
 
   function toggle() {
     c.run(async () => {
       if (st === 'on') {
-        await unsubscribePush(); setSt('off'); c.say(t('push_stopped'));
+        await unsubscribePush(c.user.id); setSt('off'); c.say(t('push_stopped'));
       } else {
-        const r = await subscribePush(c.profile.country);
+        const r = await subscribePush(c.user.id, c.profile.country);
         if (r === 'denied') { setSt('denied'); throw new Error(t('push_denied')); }
         setSt('on'); c.say(t('push_done'));
       }
@@ -28,7 +33,9 @@ export default function PushToggle({ c }: { c: Ctx }) {
       <div className="row first">
         <div className="rl">
           <i className="ic"><Icon n="bell" /></i>
-          <div><b>{t('push_t')}</b><div className="m">{st === 'denied' ? t('push_denied') : t('push_b')}</div></div>
+          <div><b>{t('push_t')}</b><div className="m">
+            {st === 'denied' ? t('push_denied') : <>{t('push_b')} {t('push_proof_reminders')}</>}
+          </div></div>
         </div>
         {st !== 'denied' && <button className="s" onClick={toggle}>{st === 'on' ? t('push_off') : t('push_on')}</button>}
       </div>

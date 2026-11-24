@@ -8,6 +8,13 @@ import ReportPanel from './ReportPanel';
 import RateForm from './RateForm';
 
 interface ToRate { proof_id: number; campaign_id: number; label: string; views: number; reviewed: boolean }
+interface AgencyAdvertiser {
+  id: number;
+  name: string;
+  phone: string | null;
+  linked_user_id: string | null;
+  status: 'managed' | 'pending' | 'linked' | 'declined';
+}
 
 const MEDIA_EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -53,7 +60,16 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
   const [payingCampaign, setPayingCampaign] = useState<number | null>(null);
   const [topupAmount, setTopupAmount] = useState('');
   const [topupBusy, setTopupBusy] = useState(false);
+  const [agencyClients, setAgencyClients] = useState<AgencyAdvertiser[]>([]);
+  const [agencyClientsLoading, setAgencyClientsLoading] = useState(c.profile.role === 'agency');
+  const [agencyClientName, setAgencyClientName] = useState('');
+  const [agencyClientPhone, setAgencyClientPhone] = useState('');
+  const [agencyInvitePhone, setAgencyInvitePhone] = useState('');
+  const [agencyAction, setAgencyAction] = useState<'create' | 'invite' | null>(null);
+  const [agencyError, setAgencyError] = useState('');
   const isAdmin = c.profile.role === 'admin';
+  const isAgency = c.profile.role === 'agency';
+  const agencyClientId = c.agencyAdvertiserId === null ? '' : String(c.agencyAdvertiserId);
 
   useEffect(() => {
     if (!mediaFile) { setFilePreview(null); return; }
@@ -65,15 +81,47 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
   const b = Math.max(0, Number(budget) || 0);
   const total = isAdmin ? 0 : b + FEE + boostFee(boostHours);
   const credit = c.profile.credit;
-  const used = !isAdmin && useCredit ? Math.min(credit, total) : 0;
-  const walletUsed = !isAdmin && c.d.walletBalance >= total - used ? total - used : 0;
+  const used = !isAdmin && !isAgency && useCredit ? Math.min(credit, total) : 0;
+  const walletUsed = !isAdmin && !isAgency && c.d.walletBalance >= total - used ? total - used : 0;
   const due = total - used - walletUsed;
-  const mine = c.d.camps.filter((x) => x.owner === c.user.id);
+  const allMine = c.d.camps.filter((x) => x.owner === c.user.id);
+  const mine = isAgency
+    ? allMine.filter((campaign) => campaign.agency_advertiser_id === c.agencyAdvertiserId)
+    : allMine;
   const activeCampaigns = mine.filter((campaign) => campaign.status === 'active');
   const totalBudget = mine.reduce((sum, campaign) => sum + campaign.budget, 0);
   const totalSpent = mine.reduce((sum, campaign) => sum + campaign.spent, 0);
   const remainingBudget = mine.reduce((sum, campaign) => sum + Math.max(0, campaign.budget - campaign.spent), 0);
   const titleOf = (id: number) => c.d.camps.find((x) => x.id === id)?.title ?? '#' + id;
+  const loadAgencyClients = useCallback(async () => {
+    const result = await sb.from('agency_advertisers')
+      .select('id,name,phone,linked_user_id,status')
+      .eq('agency_id', c.user.id)
+      .order('created_at', { ascending: false });
+    if (result.error) throw result.error;
+    setAgencyClients((result.data ?? []) as AgencyAdvertiser[]);
+  }, [c.user.id]);
+
+  useEffect(() => {
+    if (!isAgency) return;
+    let active = true;
+    setAgencyClientsLoading(true);
+    loadAgencyClients()
+      .catch((reason: unknown) => {
+        if (active) setAgencyError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        if (active) setAgencyClientsLoading(false);
+      });
+    return () => { active = false; };
+  }, [isAgency, loadAgencyClients]);
+
+  useEffect(() => {
+    if (!isAgency || agencyClientsLoading) return;
+    const selectable = agencyClients.filter((client) => client.status === 'managed' || client.status === 'linked');
+    if (selectable.some((client) => client.id === c.agencyAdvertiserId)) return;
+    c.selectAgencyAdvertiser(selectable[0]?.id ?? null);
+  }, [isAgency, agencyClients, agencyClientsLoading, c.agencyAdvertiserId, c.selectAgencyAdvertiser]);
 
   async function createAlphaPayCheckout(campaignId: number) {
     setPayingCampaign(campaignId);
@@ -172,6 +220,9 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
       setCreating(true);
       try {
         if (b < 1000 || !title.trim()) throw new Error(t('bmin'));
+        if (isAgency && (!agencyClientId || !Number.isSafeInteger(Number(agencyClientId)))) {
+          throw new Error(t('agency_select_client_error'));
+        }
         if (starts && ends && ends < starts) throw new Error(t('sched_bad'));
         let mediaUrl: string | null = null;
         let mediaPath: string | null = null;
@@ -196,11 +247,20 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
             if (!isHttpsUrl(mediaUrl)) throw new Error(t(mediaUrl ? 'media_url_bad' : 'media_required'));
           }
         }
-        const r = await sb.rpc('create_campaign', {
+        const campaignParams = {
           p_title: title.trim(), p_type: type, p_content: content.trim(), p_media_url: mediaUrl,
-          p_budget: b, p_country: target, p_boost_hours: boostHours, p_use_credit: !isAdmin && useCredit,
+          p_budget: b, p_country: target, p_boost_hours: boostHours,
           p_starts: starts || null, p_ends: ends || null,
-        });
+        };
+        const r = isAgency
+          ? await sb.rpc('create_agency_campaign', {
+            ...campaignParams,
+            p_agency_advertiser_id: Number(agencyClientId),
+          })
+          : await sb.rpc('create_campaign', {
+            ...campaignParams,
+            p_use_credit: !isAdmin && useCredit,
+          });
         if (r.error) {
           if (mediaPath) {
             const removed = await sb.storage.from('campaign-media').remove([mediaPath]);
@@ -219,6 +279,51 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
       }
     });
   }
+
+  function addAgencyClient() {
+    c.run(async () => {
+      setAgencyAction('create');
+      setAgencyError('');
+      try {
+        const result = await sb.rpc('create_agency_advertiser', {
+          p_name: agencyClientName.trim(),
+          p_phone: agencyClientPhone.trim() || null,
+        });
+        if (result.error) throw result.error;
+        const clientId = Number(result.data);
+        setAgencyClientName('');
+        setAgencyClientPhone('');
+        await loadAgencyClients();
+        if (Number.isSafeInteger(clientId) && clientId > 0) c.selectAgencyAdvertiser(clientId);
+        c.say(t('agency_client_created'));
+      } catch (reason) {
+        setAgencyError(reason instanceof Error ? reason.message : t('agency_error'));
+        throw reason;
+      } finally {
+        setAgencyAction(null);
+      }
+    });
+  }
+
+  function inviteAgencyClient() {
+    c.run(async () => {
+      setAgencyAction('invite');
+      setAgencyError('');
+      try {
+        const result = await sb.rpc('invite_agency_advertiser', { p_phone: agencyInvitePhone.trim() });
+        if (result.error) throw result.error;
+        setAgencyInvitePhone('');
+        await loadAgencyClients();
+        c.say(t('agency_invite_sent'));
+      } catch (reason) {
+        setAgencyError(reason instanceof Error ? reason.message : t('agency_error'));
+        throw reason;
+      } finally {
+        setAgencyAction(null);
+      }
+    });
+  }
+
   function redeem() {
     c.run(async () => {
       const r = await sb.rpc('redeem_promo', { p_code: promo });
@@ -243,17 +348,81 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
       {view !== 'create' && (
         <div className="page-head">
           <div>
-            <div className="eyebrow">{view === 'campaigns' ? t('r_a') : t('r_a')}</div>
-            <h1>{view === 'campaigns' ? t('myc') : t('advertiser_center')}</h1>
-            <p className="sub">{view === 'campaigns' ? t('profile_created_campaigns') : t('wallet_description')}</p>
+            <div className="eyebrow">{isAgency ? t('agency_account') : t('r_a')}</div>
+            <h1>{view === 'campaigns' ? t('myc') : isAgency ? t('agency_dashboard') : t('advertiser_center')}</h1>
+            <p className="sub">{view === 'campaigns' ? t('profile_created_campaigns') : isAgency ? t('agency_dashboard_hint') : t('wallet_description')}</p>
+            {isAgency && (
+              <div className="agency-context-switcher">
+                <label htmlFor="active-agency-client">{t('agency_active_client')}</label>
+                <select id="active-agency-client" value={agencyClientId}
+                  disabled={agencyClientsLoading || agencyClients.length === 0}
+                  onChange={(event) => c.selectAgencyAdvertiser(event.target.value ? Number(event.target.value) : null)}>
+                  <option value="">{t('agency_select_client')}</option>
+                  {agencyClients.filter((client) => client.status === 'managed' || client.status === 'linked')
+                    .map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
           <button className="p" type="button" onClick={() => onNavigate?.('create')}>{t('new')} ＋</button>
         </div>
       )}
+      {isAgency && view === 'overview' && (
+        <section className="card">
+          <div className="dashboard-card-title"><h2>{t('agency_clients')}</h2></div>
+          <p className="m">{t('agency_clients_hint')}</p>
+          <div className="grid2">
+            <form onSubmit={(event) => { event.preventDefault(); addAgencyClient(); }}>
+              <h3>{t('agency_create_client')}</h3>
+              <label htmlFor="agency-client-name">{t('agency_client_name')}</label>
+              <input id="agency-client-name" maxLength={100} value={agencyClientName} onChange={(event) => setAgencyClientName(event.target.value)} required />
+              <label htmlFor="agency-client-phone">{t('agency_client_phone')}</label>
+              <input id="agency-client-phone" type="tel" inputMode="tel" value={agencyClientPhone} onChange={(event) => setAgencyClientPhone(event.target.value)} />
+              <button className="s on" type="submit" disabled={agencyAction !== null || !agencyClientName.trim()}>
+                {agencyAction === 'create' ? '…' : t('agency_create_client')}
+              </button>
+            </form>
+            <form onSubmit={(event) => { event.preventDefault(); inviteAgencyClient(); }}>
+              <h3>{t('agency_invite_title')}</h3>
+              <label htmlFor="agency-invite-phone">{t('phone')}</label>
+              <input id="agency-invite-phone" type="tel" inputMode="tel" placeholder="+228 90 00 00 00" value={agencyInvitePhone} onChange={(event) => setAgencyInvitePhone(event.target.value)} required />
+              <button className="s" type="submit" disabled={agencyAction !== null || !agencyInvitePhone.trim()}>
+                {agencyAction === 'invite' ? '…' : t('agency_invite_button')}
+              </button>
+            </form>
+          </div>
+          {agencyError && <p className="err" role="alert">{agencyError}</p>}
+          {agencyClientsLoading ? <p className="m">{t('agency_loading')}</p>
+            : agencyClients.length === 0 ? <p className="m">{t('agency_client_empty')}</p>
+              : <div className="agency-client-list">
+                {agencyClients.map((client) => {
+                  const clientCampaigns = c.d.camps.filter((campaign) => campaign.owner === c.user.id && campaign.agency_advertiser_id === client.id);
+                  const clientBudget = clientCampaigns.reduce((sum, campaign) => sum + campaign.budget, 0);
+                  const clientSpent = clientCampaigns.reduce((sum, campaign) => sum + campaign.spent, 0);
+                  return (
+                    <div className="row" key={client.id}>
+                      <div>
+                        <b>{client.name}</b> <span className="tag">{t(`agency_${client.status}`)}</span>
+                        {client.phone && <div className="m">{client.phone}</div>}
+                        <div className="m">{t('agency_budget_summary')}: {clientCampaigns.length} · {f(clientSpent)} / {f(clientBudget)}</div>
+                      </div>
+                      {(client.status === 'managed' || client.status === 'linked') && (
+                        <button className={client.id === c.agencyAdvertiserId ? 's on' : 's'} type="button"
+                          disabled={client.id === c.agencyAdvertiserId}
+                          onClick={() => c.selectAgencyAdvertiser(client.id)}>
+                          {client.id === c.agencyAdvertiserId ? t('agency_current_client') : t('agency_switch_to')}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>}
+        </section>
+      )}
       {view === 'overview' && (
         <section className="advertiser-overview">
           <div className="dashboard-kpis">
-            <article className="dashboard-kpi"><span className="dashboard-kpi-icon">F</span><span>{t('wallet_title')}</span><b>{f(c.d.walletBalance)}</b><small>{t('wallet_description')}</small></article>
+            <article className="dashboard-kpi"><span className="dashboard-kpi-icon">F</span><span>{isAgency ? t('agency_clients') : t('wallet_title')}</span><b>{isAgency ? agencyClients.filter((client) => client.status === 'managed' || client.status === 'linked').length : f(c.d.walletBalance)}</b><small>{isAgency ? t('agency_dashboard_hint') : t('wallet_description')}</small></article>
             <article className="dashboard-kpi"><span className="dashboard-kpi-icon">▣</span><span>{t('k_camps')}</span><b>{activeCampaigns.length}</b><small>{t('st_active')}</small></article>
             <article className="dashboard-kpi"><span className="dashboard-kpi-icon">◉</span><span>{t('spent')}</span><b>{f(totalSpent)}</b><small>{t('advertiser_spent_hint')}</small></article>
             <article className="dashboard-kpi"><span className="dashboard-kpi-icon">◷</span><span>{t('rest')}</span><b>{f(remainingBudget)}</b><small>{f(totalBudget)}</small></article>
@@ -271,28 +440,28 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
               ))}
             </div>
           </section>
-          <section className="card advertiser-financing">
+          {!isAgency && <section className="card advertiser-financing">
             <div className="dashboard-card-title"><h2>{t('wallet_title')}</h2><span className="tag ok">AlphaPay</span></div>
             <p className="m">{t('wallet_description')}</p>
             <button className="s on" type="button" onClick={() => document.getElementById('advertiser-wallet-topup')?.scrollIntoView({ behavior: 'smooth' })}>{t('wallet_topup_button')}</button>
-          </section>
+          </section>}
         </section>
       )}
       {view === 'create' && (
         <div className="page-head advertiser-create-only">
-          <div><div className="eyebrow">{t('r_a')}</div><h1>{t('new')}</h1><p className="sub">{t('configure_campaign')}</p></div>
+          <div><div className="eyebrow">{isAgency ? t('agency_account') : t('r_a')}</div><h1>{t('new')}</h1><p className="sub">{t('configure_campaign')}</p></div>
         </div>
       )}
-      <section className="card advertiser-create-only">
+      {!isAgency && <section className="card advertiser-create-only">
         <h2>{t('credit')} · {f(credit)}</h2>
         <label htmlFor="pr">{t('promo_code')}</label>
         <div className="actions" style={{ flexWrap: 'nowrap' }}>
           <input id="pr" style={{ width: '100%' }} value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} maxLength={20} />
           <button className="s on" onClick={redeem} disabled={!promo.trim()}>{t('promo_apply')}</button>
         </div>
-      </section>
+      </section>}
 
-      <form id="advertiser-wallet-topup" className="card advertiser-topup-only" onSubmit={(e) => { e.preventDefault(); topup(); }}>
+      {!isAgency && <form id="advertiser-wallet-topup" className="card advertiser-topup-only" onSubmit={(e) => { e.preventDefault(); topup(); }}>
         <h2>{t('wallet_title')} · {f(c.d.walletBalance)}</h2>
         <p className="m">{t('wallet_description')}</p>
         <label htmlFor="wallet-topup-amount">{t('wallet_topup_amount')}</label>
@@ -302,7 +471,7 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
         <button className="p" type="submit" disabled={topupBusy || !topupAmount}>
           {topupBusy ? '…' : t('wallet_topup_button')}
         </button>
-      </form>
+      </form>}
 
       <form className="card advertiser-create-only" onSubmit={(e) => { e.preventDefault(); launch(); }}>
         <div className="steps" aria-label="Étapes de création">
@@ -310,6 +479,21 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
           <div className="step"><b>2</b>{t('target')}</div><div className="step-line" />
           <div className="step"><b>3</b>{t('budget')}</div>
         </div>
+        {isAgency && (
+          <>
+            <label htmlFor="agency-campaign-client">{t('agency_select_client')}</label>
+            <select id="agency-campaign-client" value={agencyClientId}
+              onChange={(event) => c.selectAgencyAdvertiser(event.target.value ? Number(event.target.value) : null)} required>
+              <option value="">{t('agency_select_client')}</option>
+              {agencyClients.filter((client) => client.status === 'managed' || client.status === 'linked')
+                .map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}
+            </select>
+            <p className="note">{t('agency_campaign_payment')}</p>
+            {!agencyClientsLoading && !agencyClients.some((client) => client.status === 'managed' || client.status === 'linked')
+              && <p className="err" role="alert">{t('agency_select_client_error')}</p>}
+            {agencyError && <p className="err" role="alert">{agencyError}</p>}
+          </>
+        )}
         <label htmlFor="ti">{t('title')}</label>
         <input id="ti" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} />
         <div className="grid2">
@@ -364,19 +548,19 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
             </option>
           ))}
         </select>
-        {!isAdmin && credit > 0 && (
+        {!isAdmin && !isAgency && credit > 0 && (
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 500 }}>
             <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} /> {t('use_credit')} ({f(credit)})
           </label>
         )}
-        {!isAdmin && c.d.walletBalance > 0 && <p className="m">{t('wallet_campaign_note')}</p>}
+        {!isAdmin && !isAgency && c.d.walletBalance > 0 && <p className="m">{t('wallet_campaign_note')}</p>}
         <p className="note" style={{ marginTop: 14 }}>
           {isAdmin ? <>{t('admin_campaign_free')}<br />{t('maxv')} : <b>{b.toLocaleString()}</b></>
             : <>{t('fee')} : <b>{f(FEE)}</b>{boostHours > 0 && <> · {t('boost_fee')} : <b>{f(boostFee(boostHours))}</b></>} · {t('maxv')} : <b>{b.toLocaleString()}</b><br />
               {t('tot')} : <b>{f(total)}</b>{used > 0 && <> − {t('credit')} <b>{f(used)}</b></>}{walletUsed > 0 && <> − {t('wallet_title')} <b>{f(walletUsed)}</b></>}<br />
-              {t('to_pay')} : <b>{f(due)}</b>{ends && <><br /><span className="m">{t('refund_note')}</span></>}</>}
+              {t('to_pay')} : <b>{f(due)}</b>{ends && !isAgency && <><br /><span className="m">{t('refund_note')}</span></>}</>}
         </p>
-        <button className="p" type="submit" disabled={creating}>{t('launch')}</button>
+        <button className="p" type="submit" disabled={creating || (isAgency && (agencyClientsLoading || !agencyClientId))}>{t('launch')}</button>
       </form>
 
       {toRate.length > 0 && (
@@ -400,6 +584,8 @@ export default function AdvertiserView({ c, view = 'overview', onNavigate }: {
           return (
             <div className={'row' + (i === 0 ? ' first' : '')} style={{ display: 'block' }} key={x.id}>
               <b>{x.title}</b>{' '}
+              {isAgency && x.agency_advertiser_id !== null && x.agency_advertiser_id !== undefined
+                && <span className="tag">{agencyClients.find((client) => client.id === x.agency_advertiser_id)?.name ?? t('agency_account')}</span>}{' '}
               <span className={'tag ' + (x.status === 'active' ? 'ok' : x.status === 'pending' ? 'w' : '')}>{t('st_' + x.status)}</span>{' '}
               {x.boost_hours > 0 && <span className="tag boost">{t('sponsored')} · {t(`boost_${x.boost_hours}`)}</span>}
               <div className="m">{f(x.spent)} / {f(x.budget)} {t('spent')} · {x.country ?? t('all_c')}{x.starts_at ? ' · ' + t('starts_on') + ' ' + x.starts_at.slice(0, 10) : ''}{x.ends_at ? ' · ' + t('ends_in') + ' ' + new Date(Date.parse(x.ends_at) - 1).toISOString().slice(0, 10) : ''}</div>

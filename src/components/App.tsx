@@ -11,6 +11,7 @@ import ResetView from './ResetView';
 import FeedView from './FeedView';
 import PublisherView from './PublisherView';
 import AdvertiserView from './AdvertiserView';
+import AgencyInvitations from './AgencyInvitations';
 import AdminView from './AdminView';
 import InstallButton from './InstallButton';
 import InstallBanner from './InstallBanner';
@@ -33,6 +34,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [d, setD] = useState<Data>(EMPTY);
+  const [agencyAdvertiserId, setAgencyAdvertiserId] = useState<number | null>(null);
   const [page, setPage] = useState<WorkspacePage>('dashboard');
   const [sel, setSel] = useState<number | null>(null);
   const [recovery, setRecovery] = useState(false);
@@ -44,6 +46,22 @@ export default function App() {
     setToast(m);
     setTimeout(() => setToast(''), 3200);
   }, []);
+  const selectAgencyAdvertiser = useCallback((id: number | null) => {
+    setAgencyAdvertiserId(id);
+    if (!user?.id) return;
+    const key = `agency-advertiser:${user.id}`;
+    if (id === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, String(id));
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setAgencyAdvertiserId(null);
+      return;
+    }
+    const stored = Number(localStorage.getItem(`agency-advertiser:${user.id}`));
+    setAgencyAdvertiserId(Number.isSafeInteger(stored) && stored > 0 ? stored : null);
+  }, [user?.id]);
 
   const run = useCallback((fn: () => Promise<void>) => {
     fn().catch((e: unknown) => say((e as { message?: string })?.message ?? String(e)));
@@ -220,12 +238,13 @@ export default function App() {
   }, [user, d.favs, run, load]);
 
   const admin = profile?.role === 'admin';
-  const tabs: Tab[] = admin ? ['f', 'd', 'a', 'm', 'p'] : ['f', 'd', 'a', 'p'];
+  const agency = profile?.role === 'agency';
+  const tabs: Tab[] = admin ? ['d', 'a', 'm', 'p'] : agency ? ['a', 'p'] : ['f', 'd', 'a', 'p'];
   const navigate = (next: WorkspacePage) => setPage(admin || next !== 'admin' ? next : 'dashboard');
-  const activeTab: Tab = page === 'feed' ? 'f'
+  const activeTab: Tab = page === 'feed' ? (admin ? 'd' : 'f')
     : page === 'advertiser' || page === 'campaigns' || page === 'wallet' || page === 'create' ? 'a'
       : page === 'admin' ? 'm'
-        : page === 'profile' || page === 'notifications' || page === 'help' ? 'p' : 'd';
+        : page === 'profile' || page === 'notifications' || page === 'help' ? 'p' : agency ? 'a' : 'd';
   const navigateTab = (next: Tab) => {
     const destinations: Record<Tab, WorkspacePage> = {
       d: 'dashboard', f: 'feed', a: 'advertiser', m: 'admin', p: 'profile',
@@ -253,14 +272,16 @@ export default function App() {
   else if (!profile) body = <p className="m">…</p>;
   else {
     const ctx: Ctx = {
-      user, profile, d, reload, say, run, sel, pick: setSel, go: navigateTab,
+      user, profile, d, agencyAdvertiserId, selectAgencyAdvertiser, reload, say, run, sel, pick: setSel, go: navigateTab,
       goWallet: () => navigate('wallet'), goCampaigns: () => navigate('campaigns'), toggleFav,
     };
     body = (
       <>
         <OfflineSync c={ctx} />
+        {profile.role === 'user' && <AgencyInvitations c={ctx} />}
         {page === 'feed' ? <FeedView c={ctx} />
-          : page === 'dashboard' ? <PublisherView c={ctx} view="dashboard" />
+          : page === 'dashboard' && agency ? <AdvertiserView c={ctx} view="overview" onNavigate={navigate} />
+            : page === 'dashboard' ? <PublisherView c={ctx} view="dashboard" />
             : page === 'wallet' ? <PublisherView c={ctx} view="wallet" />
               : page === 'advertiser' ? <AdvertiserView c={ctx} view="overview" onNavigate={navigate} />
                 : page === 'campaigns' ? <AdvertiserView c={ctx} view="campaigns" onNavigate={navigate} />
@@ -294,7 +315,7 @@ export default function App() {
           <nav className="desktop-nav" aria-label={t('navigation')}>
             {tabs.map((tab) => (
               <button key={tab} className={activeTab === tab ? 'on' : ''} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => navigateTab(tab)}>
-                <Icon n={tab} /><span>{t('r_' + tab)}</span>
+                <Icon n={tab} /><span>{tab === 'a' && agency ? t('agency_account') : t('r_' + tab)}</span>
               </button>
             ))}
           </nav>
@@ -320,7 +341,7 @@ export default function App() {
         <nav className="mobile-nav" aria-label="Navigation principale">
           {tabs.map((tab) => (
             <button key={tab} className={activeTab === tab ? 'on' : ''} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => navigateTab(tab)}>
-              <Icon n={tab} /><span>{t('r_' + tab)}</span>
+              <Icon n={tab} /><span>{tab === 'a' && agency ? t('agency_account') : t('r_' + tab)}</span>
             </button>
           ))}
         </nav>

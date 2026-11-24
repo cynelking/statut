@@ -16,32 +16,60 @@ export function pushSupported(): boolean {
     && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 
-export async function pushState(): Promise<PushState> {
+async function saveSubscription(sub: PushSubscription, userId: string, country: string | null): Promise<void> {
+  const keys = sub.toJSON().keys;
+  if (!keys?.p256dh || !keys.auth) throw new Error('The push subscription is missing encryption keys');
+  const token = (await sb.auth.getSession()).data.session?.access_token;
+  if (!token) throw new Error('Connectez-vous pour activer les notifications');
+  const response = await fetch('/api/push-subscription', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      endpoint: sub.endpoint,
+      keys,
+      country,
+    }),
+  });
+  if (!response.ok) {
+    const result = await response.json() as { error?: string };
+    throw new Error(result.error || 'Impossible d’enregistrer l’abonnement aux notifications');
+  }
+}
+
+export async function pushState(userId: string, country: string | null): Promise<PushState> {
   if (!pushSupported()) return 'unsupported';
   if (Notification.permission === 'denied') return 'denied';
   const reg = await navigator.serviceWorker.ready;
-  return (await reg.pushManager.getSubscription()) ? 'on' : 'off';
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return 'off';
+  await saveSubscription(sub, userId, country);
+  return 'on';
 }
 
-export async function subscribePush(country: string | null): Promise<'ok' | 'denied'> {
+export async function subscribePush(userId: string, country: string | null): Promise<'ok' | 'denied'> {
   if (!VAPID) return 'denied';
   if ((await Notification.requestPermission()) !== 'granted') return 'denied';
   const reg = await navigator.serviceWorker.ready;
   const sub = (await reg.pushManager.getSubscription())
     ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(VAPID) as BufferSource }));
-  const j = sub.toJSON();
-  const r = await sb.from('push_subscriptions').upsert(
-    { endpoint: sub.endpoint, p256dh: j.keys?.p256dh, auth: j.keys?.auth, country },
-    { onConflict: 'endpoint' },
-  );
-  if (r.error) throw r.error;
+  await saveSubscription(sub, userId, country);
   return 'ok';
 }
 
-export async function unsubscribePush(): Promise<void> {
+export async function unsubscribePush(userId: string): Promise<void> {
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
   if (!sub) return;
-  await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+  const token = (await sb.auth.getSession()).data.session?.access_token;
+  if (!token) throw new Error('Connectez-vous pour désactiver les notifications');
+  const response = await fetch('/api/push-subscription', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ endpoint: sub.endpoint }),
+  });
+  if (!response.ok) {
+    const result = await response.json() as { error?: string };
+    throw new Error(result.error || 'Impossible de supprimer l’abonnement aux notifications');
+  }
   await sub.unsubscribe();
 }

@@ -8,6 +8,13 @@ export interface Queued {
   proofId?: number; stage?: 'h1' | 'h23';
 }
 
+export type QueueProgress = {
+  proofId: number;
+  stage: 'h1' | 'h23';
+  state: 'uploading' | 'submitting' | 'waiting' | 'sent' | 'failed';
+  error?: string;
+};
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
     const r = indexedDB.open(DB, 1);
@@ -53,22 +60,41 @@ async function removeQueued(id: number): Promise<void> {
 }
 
 /** Envoie les preuves en attente. S'arrête au premier échec réseau. Retourne le nombre envoyé. */
-export async function flushQueue(userId: string): Promise<number> {
+export async function flushQueue(userId: string, onProgress?: (progress: QueueProgress) => void): Promise<number> {
   let sent = 0;
   for (const it of await listQueue(userId)) {
-    if (it.proofId !== undefined && it.stage) {
+    const proofId = it.proofId;
+    const stage = it.stage;
+    if (proofId !== undefined && stage) {
       const ext = (it.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const path = `${userId}/${it.proofId}-${it.stage}-${it.createdAt}.${ext}`;
-      const up = await sb.storage.from('proofs').upload(path, it.blob, { contentType: it.type });
-      if (up.error && isNet(up.error)) break;
-      if (up.error && !/exists|duplicate/i.test(up.error.message)) throw up.error;
-      const submitted = await sb.rpc('submit_proof_stage', {
-        p_proof_id: it.proofId, p_stage: it.stage, p_image_path: path,
-      });
-      if (submitted.error && isNet(submitted.error)) break;
-      if (submitted.error) throw submitted.error;
-      await removeQueued(it.id!);
-      sent++;
+      const path = `${userId}/${proofId}-${stage}-${it.createdAt}.${ext}`;
+      const report = (state: QueueProgress['state'], error?: string) => {
+        onProgress?.({ proofId, stage, state, ...(error ? { error } : {}) });
+      };
+      try {
+        report('uploading');
+        const up = await sb.storage.from('proofs').upload(path, it.blob, { contentType: it.type });
+        if (up.error && isNet(up.error)) { report('waiting', up.error.message); break; }
+        if (up.error && !/exists|duplicate/i.test(up.error.message)) {
+          report('failed', up.error.message);
+          throw up.error;
+        }
+        report('submitting');
+        const submitted = await sb.rpc('submit_proof_stage', {
+          p_proof_id: proofId, p_stage: stage, p_image_path: path,
+        });
+        if (submitted.error && isNet(submitted.error)) { report('waiting', submitted.error.message); break; }
+        if (submitted.error) {
+          report('failed', submitted.error.message);
+          throw submitted.error;
+        }
+        await removeQueued(it.id!);
+        report('sent');
+        sent++;
+      } catch (reason) {
+        if (isNet(reason)) { report('waiting', (reason as { message?: string })?.message ?? String(reason)); break; }
+        throw reason;
+      }
       continue;
     }
 

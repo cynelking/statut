@@ -21,6 +21,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [wait, setWait] = useState(0);
   const [ref, setRef] = useState('');
+  const [accountType, setAccountType] = useState<'user' | 'agency'>('user');
   const su = mode === 'signup';
 
   useEffect(() => {
@@ -54,7 +55,7 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
           if (!saved) throw new Error(t('bad_sv'));
           const r = await sb.auth.signUp({
             email: em, password: pw,
-            options: { data: { phone: '+' + d, country, ref }, emailRedirectTo: window.location.origin },
+            options: { data: { phone: '+' + d, country, ref, account_type: accountType }, emailRedirectTo: window.location.origin },
           });
           if (r.error) {
             const errorText = `${r.error.message} ${r.error.code ?? ''}`;
@@ -144,14 +145,19 @@ export default function AuthView({ run }: { run: (fn: () => Promise<void>) => vo
           <div className="hero auth-hero">
             <button type="button" className="auth-back" onClick={() => setMode('welcome')}>‹ {t('auth_back')}</button>
             <h1>{mode === 'forgot' ? t('reset_t') : t(su ? 'signup' : 'login')}</h1>
-            <p>{mode === 'signup' ? t('join_s') : mode === 'login' ? t('auth_login_hint') : t('reset_b')}</p>
-            {su && <div className="chips"><span>{VIEW_RATE} F / {t('view1')}</span><span>200 F min.</span><span>Mobile Money</span></div>}
+            <p>{mode === 'signup' ? t(accountType === 'agency' ? 'agency_signup_hint' : 'join_s') : mode === 'login' ? t('auth_login_hint') : t('reset_b')}</p>
+            {su && accountType === 'user' && <div className="chips"><span>{VIEW_RATE} F / {t('view1')}</span><span>200 F min.</span><span>Mobile Money</span></div>}
           </div>
           <form className="card" onSubmit={(e) => { e.preventDefault(); submit(); }}>
             <label htmlFor="em">{t('email')}</label>
             <input id="em" type="email" inputMode="email" autoComplete="email" placeholder="nom@exemple.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             {su && (
               <>
+                <label htmlFor="account-type">{t('account_type')}</label>
+                <select id="account-type" value={accountType} onChange={(e) => setAccountType(e.target.value as 'user' | 'agency')}>
+                  <option value="user">{t('account_individual')}</option>
+                  <option value="agency">{t('agency_account')}</option>
+                </select>
                 <label htmlFor="ph">{t('phone')}</label>
                 <input id="ph" type="tel" inputMode="tel" autoComplete="tel" placeholder="+228 90 00 00 00" value={phone} onChange={(e) => setPhone(e.target.value)} />
                 <label htmlFor="co">{t('country')}</label>

@@ -25,8 +25,8 @@ export const AVATARS = ['🙂', '😎', '🦁', '🐯', '🦅', '🌟', '💼', 
 
 export type Tab = 'f' | 'd' | 'a' | 'm' | 'p';
 export type CType = 'img' | 'vid' | 'txt';
-export interface Profile { id: string; phone: string; country: string | null; role: 'user' | 'admin'; ref_code: string | null; display_name: string | null; avatar: string | null; credit: number }
-export interface Campaign { id: number; owner: string; title: string; type: CType; content: string | null; media_url: string | null; budget: number; spent: number; status: 'pending' | 'active' | 'done'; country: string | null; created_at?: string; boost_hours: number; boost_until: string | null; credit_used: number; wallet_used?: number; admin_created?: boolean; starts_at: string | null; ends_at: string | null; payment_provider?: 'alphapay' | 'wallet' | null; payment_status?: 'pending' | 'paid' | 'failed' | 'review' | null }
+export interface Profile { id: string; phone: string; country: string | null; role: 'user' | 'agency' | 'admin'; ref_code: string | null; display_name: string | null; avatar: string | null; credit: number }
+export interface Campaign { id: number; owner: string; agency_advertiser_id?: number | null; title: string; type: CType; content: string | null; media_url: string | null; budget: number; spent: number; status: 'pending' | 'active' | 'done'; country: string | null; created_at?: string; boost_hours: number; boost_until: string | null; credit_used: number; wallet_used?: number; admin_created?: boolean; starts_at: string | null; ends_at: string | null; payment_provider?: 'alphapay' | 'wallet' | null; payment_status?: 'pending' | 'paid' | 'failed' | 'review' | null }
 export interface Proof {
   id: number; campaign_id: number; user_id: string; image_path: string | null;
   final_image_path?: string | null; posted_at?: string | null; first_submitted_at?: string | null;
@@ -62,6 +62,8 @@ export interface Data {
 }
 export interface Ctx {
   user: User; profile: Profile; d: Data;
+  agencyAdvertiserId: number | null;
+  selectAgencyAdvertiser: (id: number | null) => void;
   reload: () => Promise<void>;
   say: (m: string) => void;
   run: (fn: () => Promise<void>) => void;

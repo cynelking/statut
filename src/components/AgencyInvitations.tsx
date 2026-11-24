@@ -1,0 +1,89 @@
+'use client';
+import { useCallback, useEffect, useState } from 'react';
+import { sb } from '@/lib/supabase';
+import { useI18n } from '@/lib/i18n';
+import { Ctx } from '@/lib/types';
+
+interface AgencyInvitation {
+  id: number;
+  agency_name: string;
+  name: string;
+  created_at: string;
+}
+
+export default function AgencyInvitations({ c }: { c: Ctx }) {
+  const { t } = useI18n();
+  const [invitations, setInvitations] = useState<AgencyInvitation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [workingId, setWorkingId] = useState<number | null>(null);
+  const [error, setError] = useState('');
+
+  const loadInvitations = useCallback(async () => {
+    const result = await sb.from('agency_advertisers')
+      .select('id,agency_name,name,created_at')
+      .eq('linked_user_id', c.user.id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    if (result.error) throw result.error;
+    setInvitations((result.data ?? []) as AgencyInvitation[]);
+  }, [c.user.id]);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    loadInvitations()
+      .catch((reason: unknown) => {
+        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [loadInvitations]);
+
+  function respond(id: number, accept: boolean) {
+    c.run(async () => {
+      setWorkingId(id);
+      setError('');
+      try {
+        const result = await sb.rpc('respond_agency_invitation', {
+          p_invitation_id: id,
+          p_accept: accept,
+        });
+        if (result.error) throw result.error;
+        setInvitations((current) => current.filter((invitation) => invitation.id !== id));
+        c.say(t(accept ? 'agency_invitation_accepted' : 'agency_invitation_declined'));
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : t('agency_invitation_error'));
+        throw reason;
+      } finally {
+        setWorkingId(null);
+      }
+    });
+  }
+
+  if (loading || (invitations.length === 0 && !error)) return null;
+
+  return (
+    <section className="card" aria-labelledby="agency-invitations-title">
+      <h2 id="agency-invitations-title">{t('agency_invitation')}</h2>
+      {error && <p className="err" role="alert">{error}</p>}
+      {invitations.map((invitation) => (
+        <div className="row" key={invitation.id}>
+          <div>
+            <b>{invitation.agency_name}</b> {t('agency_invited_by')}
+            <p className="m">{t('agency_invitation_note')}</p>
+          </div>
+          <div className="actions">
+            <button type="button" className="p" disabled={workingId !== null} onClick={() => respond(invitation.id, true)}>
+              {workingId === invitation.id ? '…' : t('agency_accept')}
+            </button>
+            <button type="button" className="s" disabled={workingId !== null} onClick={() => respond(invitation.id, false)}>
+              {t('agency_decline')}
+            </button>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}

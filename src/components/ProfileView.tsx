@@ -112,12 +112,12 @@ export default function ProfileView({ c, logout }: { c: Ctx; logout: () => void 
         <div className="profile-heading">
           <span className="m">{t('profile')}</span>
           <h1>{c.profile.display_name || c.profile.phone}</h1>
-          <span className="tag">{c.profile.role === 'admin' ? t('r_m') : t('r_d')}</span>
+          <span className="tag">{c.profile.role === 'admin' ? t('r_m') : c.profile.role === 'agency' ? t('agency_account') : t('r_d')}</span>
         </div>
-        <div className="profile-head-actions">
+        {c.profile.role !== 'agency' && <div className="profile-head-actions">
           <button className="s" type="button" onClick={c.goWallet}>{t('wd')}</button>
           <button className="p" type="button" onClick={() => c.go('f')}>{t('r_f')}</button>
-        </div>
+        </div>}
       </section>
 
       <section className="card">
@@ -131,7 +131,7 @@ export default function ProfileView({ c, logout }: { c: Ctx; logout: () => void 
         </div>
       </section>
 
-      <section className="profile-metrics" aria-label={t('profile_activity')}>
+      {c.profile.role !== 'agency' && <section className="profile-metrics" aria-label={t('profile_activity')}>
         <div className="profile-metric"><span>{t('bal')}</span><b>{f(c.d.bal)}</b></div>
         <div className="profile-metric"><span>{t('profile_total_earned')}</span><b>{f(c.d.bal + withdrawn)}</b></div>
         <div className="profile-metric"><span>{t('credit')}</span><b>{f(c.profile.credit)}</b></div>
@@ -142,12 +142,12 @@ export default function ProfileView({ c, logout }: { c: Ctx; logout: () => void 
         <div className="profile-metric"><span>{t('profile_created_campaigns')}</span><b>{myCampaigns.length}</b></div>
         <div className="profile-metric"><span>{t('profile_active_campaigns')}</span><b>{activeCampaigns}</b></div>
         <div className="profile-metric"><span>{t('profile_favorites')}</span><b>{c.d.favs.length}</b></div>
-      </section>
+      </section>}
 
       <section className="card">
         <h2>{t('profile_activity')}</h2>
         <div className="grid2">
-          <div>
+          {c.profile.role !== 'agency' && <div>
             <h3 className="profile-subheading">{t('mine')}</h3>
             {recentProofs.length === 0 && <p className="m">{t('profile_no_activity')}</p>}
             {recentProofs.map((proof) => (
@@ -161,7 +161,7 @@ export default function ProfileView({ c, logout }: { c: Ctx; logout: () => void 
                 </span>
               </div>
             ))}
-          </div>
+          </div>}
           <div>
             <h3 className="profile-subheading">{t('myc')}</h3>
             {recentCampaigns.length === 0 && <p className="m">{t('profile_no_activity')}</p>}
@@ -180,33 +180,33 @@ export default function ProfileView({ c, logout }: { c: Ctx; logout: () => void 
         </div>
       </section>
 
-      <section className="card">
+      {c.profile.role !== 'agency' && <section className="card">
         <h2>{t('profile_finances')}</h2>
         <div className="profile-finance-grid">
           <div><span>{t('bal')}</span><b>{f(c.d.bal)}</b></div>
           <div><span>{t('profile_withdrawn')}</span><b>{f(paidTotal)}</b></div>
           <div><span>{t('profile_withdrawal_pending')}</span><b>{f(pendingTotal)}</b></div>
         </div>
-      </section>
+      </section>}
 
       <TransactionHistory />
 
       <section className="card">
         <h2>{t('profile_shortcuts')}</h2>
         <div className="profile-shortcuts">
-          <button type="button" onClick={() => c.go('f')}>
+          {c.profile.role !== 'agency' && <button type="button" onClick={() => c.go('f')}>
             <span>{t('profile_favorites')}</span><b>{c.d.favs.length}</b>
-          </button>
+          </button>}
           <button type="button" onClick={c.goCampaigns}>
             <span>{t('myc')}</span><b>{myCampaigns.length}</b>
           </button>
-          <button type="button" onClick={() => c.go('d')}>
+          {c.profile.role !== 'agency' && <button type="button" onClick={() => c.go('d')}>
             <span>{t('mine')}</span><b>{c.d.proofs.length}</b>
-          </button>
+          </button>}
         </div>
       </section>
 
-      <ReferralCard c={c} />
+      {c.profile.role !== 'agency' && <ReferralCard c={c} />}
 
       <section className="card">
         <h2>{t('profile_settings')}</h2>
